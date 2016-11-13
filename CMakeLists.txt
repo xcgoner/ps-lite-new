@@ -48,8 +48,8 @@ list(APPEND pslite_LINKER_LIBS_L "ipHlpApi.lib" "ws2_32.lib")
   endforeach(flag_var)
 endif()
 
-list(APPEND SOURCE ${proto_srcs}) 
-add_library(pslite ${SOURCE}) 
+list(APPEND SOURCE ${proto_srcs})
+add_library(pslite ${SOURCE})
 
 target_link_libraries(pslite ${pslite_LINKER_LIBS})
 list(APPEND pslite_LINKER_LIBS_L ${PROTOBUF_LIBRARIES})
@@ -58,3 +58,18 @@ list(APPEND pslite_INCLUDE_DIR_L ${PROTOBUF_INCLUDE_DIR})
 
 set(pslite_LINKER_LIBS ${pslite_LINKER_LIBS_L} PARENT_SCOPE)
 set(pslite_INCLUDE_DIR ${pslite_INCLUDE_DIR_L} PARENT_SCOPE)
+
+macro(requires_core_deps NAME)
+  target_link_libraries(${NAME}
+          ${ZMQ_LIBRARIES})
+  add_dependencies(${NAME} ZMQ)
+endmacro(requires_core_deps)
+
+macro(add_pslite_executable NAME)
+  add_executable(${NAME} ${ARGN})
+  target_link_libraries(${NAME} pslite)
+  add_dependencies(${NAME} pslite)
+  requires_core_deps(${NAME})
+endmacro(add_pslite_executable)
+
+subdirs(examples)
