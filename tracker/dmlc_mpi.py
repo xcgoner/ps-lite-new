@@ -36,7 +36,7 @@ def get_mpi_env(envs):
     support both openmpi and mpich2
     """
     outfile="/tmp/mpiver"
-    os.system("mpirun 1>/tmp/mpiver 2>/tmp/mpiver")
+    os.system("mpirun -version 1>/tmp/mpiver 2>/tmp/mpiver")
     with open (outfile, "r") as infile:
         mpi_ver = infile.read()
     cmd = ''
