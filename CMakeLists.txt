@@ -71,6 +71,7 @@ macro(requires_core_deps NAME)
 endmacro(requires_core_deps)
 
 macro(add_pslite_executable NAME)
+  message("add_executable(${NAME} ${ARGN})")
   add_executable(${NAME} ${ARGN})
   target_link_libraries(${NAME} pslite)
   add_dependencies(${NAME} pslite)
