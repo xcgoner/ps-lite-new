@@ -20,8 +20,10 @@ public:
     ps_server_->set_request_handle(
       std::bind(&KVStoreDistServer::DataHandle, this, _1, _2, _3));
 
+    // read environment variables
     sync_mode_ = !strcmp(ps::Environment::Get()->find("SYNC_MODE"), "1");
     learning_rate_ = distlr::ToFloat(ps::Environment::Get()->find("LEARNING_RATE"));
+    // TODO: regularization
 
     std::string mode = sync_mode_ ? "sync" : "async";
     std::cout << "Server mode: " << mode << std::endl;
@@ -66,7 +68,9 @@ private:
         if (merged.request.size() == (size_t)ps::NumWorkers()) {
           // update the weight
           for (size_t i = 0; i < n; ++i) {
+            // gradient descent
             weights[i] -= learning_rate_ * req_data.vals[i] / merged.request.size();
+            // TODO: proximal step
           }
           for (const auto& req : merged.request) {
             server->Response(req);
@@ -76,7 +80,9 @@ private:
         }
       } else { // async push
         for (size_t i = 0; i < n; ++i) {
+          // SGD
           weights[i] -= learning_rate_ * req_data.vals[i];
+          // TODO: proximal step
         }
         server->Response(req_meta);
       }
@@ -90,6 +96,7 @@ private:
         response.vals[i] = weights[i];
       }
       server->Response(req_meta, response);
+      // TODO: semi-synchronous
     }
   }
 
