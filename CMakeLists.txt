@@ -22,6 +22,9 @@ include("cmake/External/zmq.cmake")
 include_directories(pslite ${ZMQ_INCLUDE_DIRS})
 list(APPEND pslite_LINKER_LIBS_L ${ZMQ_LIBRARIES})
 
+# ---[ eigen
+include("cmake/External/eigen.cmake")
+
 # ---[ Google-protobuf
 include(cmake/ProtoBuf.cmake)
 

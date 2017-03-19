@@ -39,8 +39,10 @@ public:
 
   // batch_size = -1 means all samples
   std::vector<Sample> NextBatch(int batch_size=100) {
+    // TODO: need refinement
     if (batch_size < 0) {
-      batch_size = (int)samples_.size();
+      round_end_ = true;
+      return samples_;
     }
 
     std::vector<Sample> batch;
@@ -50,6 +52,7 @@ public:
       if (offset_ == (int)samples_.size()) {
         offset_ = 0;
         round_end_ = true;
+        break;
       }
     }
     return batch;

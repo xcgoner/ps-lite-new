@@ -25,7 +25,7 @@ message PBControl {
   optional uint64 msg_sig = 4;
 }
 
-// mete information about a message
+// meta information about a message
 message PBMeta {
   // message.head
   optional int32 head = 1;
@@ -46,4 +46,8 @@ message PBMeta {
   optional bool push = 5;
   // whether or not it's for SimpleApp
   optional bool simple_app = 6 [default = false];
+  // the timestamp of this message
+  optional int32 ts1 = 10;
+  // the timestamp of this message
+  optional int32 ts2 = 11;
 }

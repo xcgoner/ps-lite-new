@@ -20,11 +20,18 @@ void LR::SetKVWorker(ps::KVWorker<float>* kv) {
   kv_ = kv;
 }
 
-void LR::Train(DataIter& iter, int batch_size = 100) {
+void LR::Train(DataIter& iter, bool sync_mode, int batch_size = 100) {
+  int ts1, ts2;
+  if (sync_mode) {
+    PullWeight_(&ts1, &ts2);
+    std::cout << "Worker: " << ps::MyRank() << ", Global ts: " << ts1 << ", waiting for ts: " << ts2 << std::endl;
+  }
   while (iter.HasNext()) {
-    std::vector<Sample> batch = iter.NextBatch(batch_size);
+    std::vector<Sample> batch = iter.NextBatch(-1);
 
-    PullWeight_();
+    if (!sync_mode) {
+      PullWeight_();
+    }
 
     std::vector<float> grad(weight_.size());
     for (size_t j = 0; j < weight_.size(); ++j) {
@@ -33,10 +40,11 @@ void LR::Train(DataIter& iter, int batch_size = 100) {
         auto& sample = batch[i];
         grad[j] += (Sigmoid_(sample.GetFeature()) - sample.GetLabel()) * sample.GetFeature(j);
       }
-      grad[j] = 1. * grad[j] / batch.size() + C_ * weight_[j] / batch.size();
+      grad[j] = 1. * grad[j] + C_ * weight_[j];
     }
 
-    PushGradient_(grad);
+    PushGradient_(grad, batch.size());
+//    std::cout << "Worker: " << ps::MyRank() << " pushed" << std::endl;
   }
 }
 
@@ -53,8 +61,8 @@ void LR::Test(DataIter& iter, int num_iter) {
   time_t rawtime;
   time(&rawtime);
   struct tm* curr_time = localtime(&rawtime);
-  std::cout << std::setw(2) << curr_time->tm_hour << ':' << std::setw(2)
-    << curr_time->tm_min << ':' << std::setw(2) << curr_time->tm_sec
+  std::cout << std::setfill ('0') << std::setw(2) << curr_time->tm_hour << ':' << std::setfill ('0') << std::setw(2)
+    << curr_time->tm_min << ':' << std::setfill ('0') << std::setw(2) << curr_time->tm_sec
     << " Iteration "<< num_iter << ", accuracy: " << acc / batch.size()
     << std::endl;
 }
@@ -90,7 +98,8 @@ void LR::InitWeight_() {
   srand(random_state_);
   weight_.resize(num_feature_dim_);
   for (size_t i = 0; i < weight_.size(); ++i) {
-    weight_[i] = static_cast<float>(rand()) / static_cast<float>(RAND_MAX);
+//    weight_[i] = static_cast<float>(rand()) / static_cast<float>(RAND_MAX);
+    weight_[i] = 0;
   }
 }
 
@@ -110,22 +119,29 @@ float LR::Sigmoid_(std::vector<float> feature) {
   return 1. / (1. + exp(-z));
 }
 
-void LR::PullWeight_() {
+void LR::PullWeight_(int* ts1, int* ts2) {
   std::vector<ps::Key> keys(num_feature_dim_);
   std::vector<float> vals;
   for (int i = 0; i < num_feature_dim_; ++i) {
     keys[i] = i;
   }
-  kv_->Wait(kv_->Pull(keys, &vals));
+  kv_->Wait(kv_->Pull(keys, &vals, nullptr, 0, nullptr, ts1, ts2));
   weight_ = vals;
 }
 
-void LR::PushGradient_(const std::vector<float>& grad) {
-  std::vector<ps::Key> keys(num_feature_dim_);
+void LR::PushGradient_(const std::vector<float>& grad, int naggregates) {
+  std::vector<ps::Key> keys(num_feature_dim_+1);
   for (int i = 0; i < num_feature_dim_; ++i) {
     keys[i] = i;
   }
-  kv_->Wait(kv_->Push(keys, grad));
+  // naggregates
+  keys[num_feature_dim_] = num_feature_dim_;
+//  kv_->Wait(kv_->Push(keys, grad, {}, 0, nullptr, naggregates));
+//  std::cout << "batchsize: " << naggregates << std::endl;
+  std::vector<float> push_vector = grad;
+  push_vector.push_back(naggregates);
+//  kv_->Push(keys, push_vector);
+  kv_->Wait(kv_->Push(keys, push_vector));
 }
 
 } // namespace distlr

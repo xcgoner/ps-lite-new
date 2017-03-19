@@ -354,6 +354,12 @@ void Van::PackMeta(const Meta& meta, char** meta_buf, int* buf_size) {
     }
   }
 
+  // timestamps for iteration
+  if (meta.ts1 != Meta::kEmpty) {
+    pb.set_ts1(meta.ts1);
+    pb.set_ts2(meta.ts2);
+  }
+
   // to string
   *buf_size = pb.ByteSize();
   *meta_buf = new char[*buf_size+1];
@@ -378,6 +384,15 @@ void Van::UnpackMeta(const char* meta_buf, int buf_size, Meta* meta) {
   meta->data_type.resize(pb.data_type_size());
   for (int i = 0; i < pb.data_type_size(); ++i) {
     meta->data_type[i] = static_cast<DataType>(pb.data_type(i));
+  }
+  // timestamp for iteration
+  if (pb.has_ts1()) {
+    meta->ts1 = pb.ts1();
+    meta->ts2 = pb.ts2();
+  }
+  else {
+    meta->ts1 = Meta::kEmpty;
+    meta->ts2 = Meta::kEmpty;
   }
   if (pb.has_control()) {
     const auto& ctrl = pb.control();

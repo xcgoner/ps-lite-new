@@ -39,6 +39,10 @@ struct KVPairs {
   SArray<Val> vals;
   /** \brief the according value lengths (could be empty) */
   SArray<int> lens;
+  /** \brief the timestamp_1 of iteration */
+  int ts1;
+  /** \brief the timestamp_2 of iteration */
+  int ts2;
 };
 
 /**
@@ -146,8 +150,9 @@ class KVWorker : public SimpleApp {
            std::vector<Val>* vals,
            std::vector<int>* lens = nullptr,
            int cmd = 0,
-           const Callback& cb = nullptr) {
-    return Pull_(SArray<Key>(keys), vals, lens, cmd, cb);
+           const Callback& cb = nullptr,
+           int* ts1_ptr = nullptr, int* ts2_ptr = nullptr) {
+    return Pull_(SArray<Key>(keys), vals, lens, cmd, cb, ts1_ptr, ts2_ptr);
   }
 
   /**
@@ -227,7 +232,7 @@ class KVWorker : public SimpleApp {
    */
   template <typename C, typename D>
   int Pull_(const SArray<Key>& keys, C* vals, D* lens,
-            int cmd, const Callback& cb);
+            int cmd, const Callback& cb, int* ts1_ptr, int* ts2_ptr);
   /**
    * \brief add a callback for a request. threadsafe.
    * @param cb callback
@@ -392,6 +397,8 @@ void KVServer<Val>::Response(const KVMeta& req, const KVPairs<Val>& res) {
   msg.meta.head        = req.cmd;
   msg.meta.timestamp   = req.timestamp;
   msg.meta.recver      = req.sender;
+  msg.meta.ts1      = res.ts1;
+  msg.meta.ts2      = res.ts2;
   if (res.keys.size()) {
     msg.AddData(res.keys);
     msg.AddData(res.vals);
@@ -514,6 +521,8 @@ void KVWorker<Val>::Process(const Message& msg) {
     if (msg.data.size() > (size_t)2) {
       kvs.lens = msg.data[2];
     }
+    kvs.ts1 = msg.meta.ts1;
+    kvs.ts2 = msg.meta.ts2;
     mu_.lock();
     recv_kvs_[ts].push_back(kvs);
     mu_.unlock();
@@ -543,9 +552,9 @@ void KVWorker<Val>::RunCallback(int timestamp) {
 template <typename Val>
 template <typename C, typename D>
 int KVWorker<Val>::Pull_(
-    const SArray<Key>& keys, C* vals, D* lens, int cmd, const Callback& cb) {
+    const SArray<Key>& keys, C* vals, D* lens, int cmd, const Callback& cb, int* ts1_ptr, int* ts2_ptr) {
   int ts = obj_->NewRequest(kServerGroup);
-  AddCallback(ts, [this, ts, keys, vals, lens, cb]() mutable {
+  AddCallback(ts, [this, ts, keys, vals, lens, cb, ts1_ptr, ts2_ptr]() mutable {
       mu_.lock();
       auto& kvs = recv_kvs_[ts];
       mu_.unlock();
@@ -583,12 +592,26 @@ int KVWorker<Val>::Pull_(
         }
         p_lens = lens->data();
       }
+
+      // check timestamps
+      if (ts1_ptr != nullptr && ts2_ptr != nullptr) {
+        *ts1_ptr = kvs[0].ts1;
+        *ts2_ptr = kvs[0].ts2;
+      }
       for (const auto& s : kvs) {
         memcpy(p_vals, s.vals.data(), s.vals.size() * sizeof(Val));
         p_vals += s.vals.size();
         if (p_lens) {
           memcpy(p_lens, s.lens.data(), s.lens.size() * sizeof(int));
           p_lens += s.lens.size();
+        }
+
+        // Warning !!
+        // assume that all the ts1/ts2 are the same for all the KVPairs
+        if (ts1_ptr != nullptr && ts2_ptr != nullptr) {
+          if (s.ts1 != *ts1_ptr || s.ts2 != *ts2_ptr) {
+            std::cout << "Something is wrong with the timestamps of iterations!!!" << std::endl;
+          }
         }
       }
 

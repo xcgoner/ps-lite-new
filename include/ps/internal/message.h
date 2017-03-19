@@ -137,7 +137,7 @@ struct Meta {
   /** \brief default constructor */
   Meta() : head(kEmpty), customer_id(kEmpty), timestamp(kEmpty),
            sender(kEmpty), recver(kEmpty),
-           request(false), simple_app(false) {}
+           request(false), simple_app(false), ts1(kEmpty), ts2(kEmpty) {}
   std::string DebugString() const {
     std::stringstream ss;
     if (sender == Node::kEmpty) {
@@ -186,6 +186,10 @@ struct Meta {
   std::vector<DataType> data_type;
   /** \brief system control message */
   Control control;
+  /** \brief the timestamp_1 of iteration */
+  int ts1;
+  /** \brief the timestamp_2 of iteration */
+  int ts2;
 };
 /**
  * \brief messages that communicated amaong nodes.

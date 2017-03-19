@@ -17,7 +17,7 @@ public:
 
   void SetKVWorker(ps::KVWorker<float>* kv);
 
-  void Train(DataIter& iter, int num_iter);
+  void Train(DataIter& iter, bool sync_mode, int batch_size);
 
   void Test(DataIter& iter, int num_iter);
 
@@ -36,9 +36,9 @@ private:
 
   float Sigmoid_(std::vector<float> feature);
 
-  void PullWeight_();
+  void PullWeight_(int* ts1 = nullptr, int* ts2 = nullptr);
 
-  void PushGradient_(const std::vector<float>& grad);
+  void PushGradient_(const std::vector<float>& grad, int naggregates);
 
   int num_feature_dim_;
   float learning_rate_;
