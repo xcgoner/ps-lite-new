@@ -117,7 +117,7 @@ private:
         }
       }
     } else { // pull
-      CHECK(!weights_.empty());
+      CHECK(weight_initialized_);
 
       ps::KVPairs<Val> response;
       response.keys = req_data.keys;
@@ -172,8 +172,8 @@ void RunWorker() {
 
   // data folder
   std::string root = ps::Environment::Get()->find("DATA_DIR");
-  int ndims =
-      util::ToInt(ps::Environment::Get()->find("NUM_FEATURE_DIM")) + 1;
+  int nfeatures = util::ToInt(ps::Environment::Get()->find("NUM_FEATURE_DIM"));
+  int ndims = nfeatures + 1;
 
   int rank = ps::MyRank();
   // kv store
@@ -181,11 +181,9 @@ void RunWorker() {
   lrprox::LR lr = lrprox::LR(ndims);
 
   // initialized the vector used to push
-  vector<double> vec_weight_push;
-  vec_weight_push.resize(ndims+1);
+  vector<double> vec_weight_push(ndims+1);
   // initialized the vector used to pull
-  vector<double> vec_weight_pull;
-  vec_weight_pull.resize(ndims);
+  vector<double> vec_weight_pull(ndims);
 
   // additional key for naggregates
   std::vector<ps::Key> keys_push(ndims+1);
@@ -219,7 +217,7 @@ void RunWorker() {
   // read training data
   // TODO: psuedo-distirbuted environment
   std::string filename = root + "/train/part-00" + std::to_string(rank + 1);
-  lrprox::data_reader dr = lrprox::data_reader(filename, ndims);
+  lrprox::data_reader dr = lrprox::data_reader(filename, nfeatures);
 
   int ts1, ts2;
 
@@ -243,15 +241,16 @@ void RunWorker() {
     // read testing data
     if (rank == 0) {
       std::string test_filename = root + "/test/part-001";
-      lrprox::data_reader test_dr = lrprox::data_reader(test_filename, ndims);
+      lrprox::data_reader test_dr = lrprox::data_reader(test_filename, nfeatures);
       time_t rawtime;
       time(&rawtime);
       struct tm* curr_time = localtime(&rawtime);
       std::cout << std::setfill ('0') << std::setw(2) << curr_time->tm_hour << ':' << std::setfill ('0') << std::setw(2)
                 << curr_time->tm_min << ':' << std::setfill ('0') << std::setw(2) << curr_time->tm_sec
-                << " Iteration "<< i << ", cost: " << lr.cost(test_dr.getX(), test_dr.gety())
+                << " Iteration "<< i << ", cost: " << lr.cost(test_dr.getX(), test_dr.gety()) / test_dr.getX().rows()
                 << std::endl;
     }
+
   }
 
   if (rank == 0) {
