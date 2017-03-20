@@ -44,7 +44,6 @@ int main() {
   cout << "---------" << endl;
   cout << prox_op2.proximal(lr.grad(X, y), 0.3) << endl;
 
-
 //  test results should be
 //  0.1 0.2 0.3 0.4
 //  0.5 0.6 0.7 0.8
@@ -73,6 +72,22 @@ int main() {
 //  0.476017
 //  0.538891
 //  0.601764
+
+  // test eigen get size
+  cout << "---------" << endl;
+  cout << X.rows() << endl;
+  cout << X.cols() << endl;
+  cout << y.size() << endl;
+  // test eigen vector copy
+  auto v1 = prox_op2.proximal(lr.grad(X, y), 0.3);
+  vector<double> v2;
+  v2.resize(v1.size());
+  VectorXd::Map(&v2[0], v1.size()) = v1;
+  cout << "---------" << endl;
+  for (int i = 0; i < v2.size(); i++) {
+    cout << v2[i] << ' ';
+  }
+  cout << endl;
 
   return 0;
 }

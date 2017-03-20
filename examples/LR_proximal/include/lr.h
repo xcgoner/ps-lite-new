@@ -40,4 +40,4 @@ namespace lrprox {
 
 }  // namespace lrprox
 
-#endif  // LR_H_
+#endif  // LRPROX_LR_H_
