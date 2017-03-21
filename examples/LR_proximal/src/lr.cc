@@ -42,6 +42,9 @@ namespace lrprox {
       weight_(i) = weight[i];
     }
   }
+  void LR::updateWeight(const VectorXd& weight) {
+    weight_ = weight;
+  }
 //
 //  bool saveModel(std::string &filename);
 

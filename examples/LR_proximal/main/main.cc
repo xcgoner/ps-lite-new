@@ -35,6 +35,23 @@ public:
     ndims_ = util::ToInt(ps::Environment::Get()->find("NUM_FEATURE_DIM")) + 1;
     weight_initialized_ = false;
     // TODO: regularization
+    auto proximal_op = ps::Environment::Get()->find("PROXIMAL");
+    if (proximal_op != nullptr) {
+      use_proximal_ = true;
+      double lambda = util::ToDouble(ps::Environment::Get()->find("LAMBDA"));
+      if (strcmp(proximal_op, "l1") == 0) {
+        proximal_op_ = 1;
+        prox_opl1 = lrprox::prox_l1(lambda);
+      }
+      else if (strcmp(proximal_op, "l2") == 0) {
+        proximal_op_ = 2;
+        prox_opl2 = lrprox::prox_l2(lambda);
+      }
+      cout << "Using proximal: " << proximal_op_ << endl;
+    }
+    else {
+      use_proximal_ = false;
+    }
 
     std::string mode = sync_mode_ ? "sync" : "async";
     std::cout << "Server mode: " << mode << std::endl;
@@ -59,6 +76,7 @@ private:
     // currently, only support one server
     
     size_t n = ndims_;
+    bool show_test = false;
     if (req_meta.push) {
       if (!weight_initialized_) {
         // initialization
@@ -102,10 +120,21 @@ private:
             // gradient descent
             weight_ -= learning_rate_ * merged.vals / merged.naggregates;
             // TODO: proximal step
+            if (use_proximal_) {
+              if (proximal_op_ == 1) {
+                // l1 proximal
+                weight_ = prox_opl1.proximal(weight_, learning_rate_);
+              }
+              else if (proximal_op_ == 2) {
+                // l2 proximal
+                weight_ = prox_opl2.proximal(weight_, learning_rate_);
+              }
+            }
             // timestamp
             global_ts_++;
             merged.vals.setZero(n);
             merged.naggregates = 0;
+            show_test = true;
           }
         } else { // async push
           for (size_t i = 0; i < n; ++i) {
@@ -115,6 +144,33 @@ private:
           }
           server->Response(req_meta);
         }
+      }
+      // read testing data
+      if (show_test) {
+        std::string root = ps::Environment::Get()->find("DATA_DIR");
+        std::string test_filename = root + "/test/part-001";
+        lrprox::data_reader test_dr = lrprox::data_reader(test_filename, ndims_-1);
+        time_t rawtime;
+        time(&rawtime);
+        struct tm* curr_time = localtime(&rawtime);
+        lrprox::LR lr = lrprox::LR(ndims_);
+        lr.updateWeight(weight_);
+        double cost = lr.cost(test_dr.getX(), test_dr.gety()) / test_dr.getX().rows();
+        if (use_proximal_) {
+          if (proximal_op_ == 1) {
+            // l1 proximal
+            cost = cost + prox_opl1.cost(weight_);
+          }
+          else if (proximal_op_ == 2) {
+            // l2 proximal
+            cost = cost + prox_opl2.cost(weight_);
+          }
+        }
+        std::cout << std::setfill ('0') << std::setw(2) << curr_time->tm_hour << ':' << std::setfill ('0') << std::setw(2)
+                  << curr_time->tm_min << ':' << std::setfill ('0') << std::setw(2) << curr_time->tm_sec
+                  << " Iteration "<< global_ts_ << ", cost: " << cost
+                  << std::endl;
+        show_test = false;
       }
     } else { // pull
       CHECK(weight_initialized_);
@@ -141,6 +197,10 @@ private:
   int nsamples_;
   int ndims_;
   bool weight_initialized_;
+  bool use_proximal_;
+  int proximal_op_;
+  lrprox::prox_l1 prox_opl1;
+  lrprox::prox_l2 prox_opl2;
 
   struct MergeBuf {
     VectorXd vals;
@@ -236,19 +296,6 @@ void RunWorker() {
     kv->Wait(kv->Push(keys_push, vec_weight_push));
     if (sync_mode) {
       ps::Postoffice::Get()->Barrier(ps::kWorkerGroup);
-    }
-
-    // read testing data
-    if (rank == 0) {
-      std::string test_filename = root + "/test/part-001";
-      lrprox::data_reader test_dr = lrprox::data_reader(test_filename, nfeatures);
-      time_t rawtime;
-      time(&rawtime);
-      struct tm* curr_time = localtime(&rawtime);
-      std::cout << std::setfill ('0') << std::setw(2) << curr_time->tm_hour << ':' << std::setfill ('0') << std::setw(2)
-                << curr_time->tm_min << ':' << std::setfill ('0') << std::setw(2) << curr_time->tm_sec
-                << " Iteration "<< i << ", cost: " << lr.cost(test_dr.getX(), test_dr.gety()) / test_dr.getX().rows()
-                << std::endl;
     }
 
   }

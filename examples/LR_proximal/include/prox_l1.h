@@ -16,7 +16,7 @@ namespace lrprox {
 
   class prox_l1 {
   public:
-    explicit prox_l1(double lambda)
+    explicit prox_l1(double lambda = 0)
     : lambda_(lambda){
 
     }

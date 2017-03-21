@@ -71,12 +71,16 @@ def mpi_submit(nworker, nserver, pass_envs):
 
     pass_envs['SYNC_MODE'] = 1
     pass_envs['SEMI_SYNC_MODE'] = 1
+    pass_envs['DATA_DIR'] = '/home/cx2/ClionProjects/ps-lite-new/examples/LR/script/a9a-data'
     pass_envs['NSAMPLES'] = 32561
     pass_envs['NUM_FEATURE_DIM'] = 123
 
+    pass_envs['PROXIMAL'] = 'l2'
+    pass_envs['LAMBDA'] = 0.01
+
     # start servers
     if nserver > 0:
-        pass_envs['LEARNING_RATE'] = 1
+        pass_envs['LEARNING_RATE'] = 0.1
         pass_envs['DMLC_ROLE'] = 'server'
         prog = 'mpirun -n %d %s %s' % (nserver, get_mpi_env(pass_envs), cmd)
         thread = Thread(target = run, args=(prog,))
@@ -84,8 +88,7 @@ def mpi_submit(nworker, nserver, pass_envs):
         thread.start()
 
     if nworker > 0:
-        pass_envs['DATA_DIR'] = '/home/cx2/ClionProjects/ps-lite-new/examples/LR/script/a9a-data'
-        pass_envs['NUM_ITERATION'] = 5
+        pass_envs['NUM_ITERATION'] = 20
         pass_envs['BATCH_SIZE'] = 100
         pass_envs['TEST_INTERVAL'] = 1
         pass_envs['DMLC_ROLE'] = 'worker'
