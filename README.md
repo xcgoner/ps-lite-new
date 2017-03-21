@@ -1,4 +1,3 @@
-<img src="http://parameterserver.org/images/parameterserver.png"  width=400 />
 
 [![Build Status](https://travis-ci.org/dmlc/ps-lite.svg?branch=master)](https://travis-ci.org/dmlc/ps-lite)
 [![GitHub license](http://dmlc.github.io/img/apache2.svg)](./LICENSE)
@@ -43,9 +42,15 @@ and
 Then clone and build
 
 ```bash
-git clone https://github.com/dmlc/ps-lite
-cd ps-lite && make -j4
+git clone https://github.com/xcgoner/ps-lite-new.git
+cd ps-lite-new
+cmake .
+make -j4
+cmake .
+make -j4
 ```
+
+Note that there is some bug for make/cmake, we have to run the cmake/make twice to make ZMQ work.
 
 ### How to use
 
