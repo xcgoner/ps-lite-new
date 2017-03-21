@@ -28,7 +28,14 @@ public:
         std::bind(&KVStoreDistServer::DataHandle, this, _1, _2, _3));
 
     // read environment variables
-    sync_mode_ = !strcmp(ps::Environment::Get()->find("SYNC_MODE"), "1");
+    if (ps::Environment::Get()->find("SYNC_MODE") != nullptr) {
+      sync_mode_ = util::ToInt(ps::Environment::Get()->find("SYNC_MODE"));
+    }
+    else {
+      // default: sync mode
+      sync_mode_ = 1;
+    }
+    num_iteration_ = util::ToInt(ps::Environment::Get()->find("NUM_ITERATION"));
     learning_rate_ = util::ToDouble(ps::Environment::Get()->find("LEARNING_RATE"));
     nsamples_ = util::ToInt(ps::Environment::Get()->find("NSAMPLES"));
     // an addition column for all 1
@@ -53,8 +60,8 @@ public:
       use_proximal_ = false;
     }
 
-    std::string mode = sync_mode_ ? "sync" : "async";
-    std::cout << "Server mode: " << mode << std::endl;
+    std::vector<std::string> mode = {"sync", "semi-sync without VR", "semi-sync with VR"};
+    std::cout << "Server mode: " << mode[sync_mode_-1] << std::endl;
 
     // initialize timestamp
     global_ts_ = 0;
@@ -77,23 +84,23 @@ private:
     
     size_t n = ndims_;
     bool show_test = false;
-    if (req_meta.push) {
-      if (!weight_initialized_) {
-        // initialization
-        weight_initialized_ = true;
-        CHECK_EQ(n, req_data.vals.size());
-        std::cout << "Init weight" << std::endl;
-        weight_ = VectorXd::Zero(n);
-        for (int i = 0; i < n; ++i) {
-          weight_(i) = req_data.vals[i];
-        }
-        server->Response(req_meta);
-        if (sync_mode_) {
+
+    if (sync_mode_ == 1) {
+      //// sync mode
+      if (req_meta.push) {
+        if (!weight_initialized_) {
+          // initialization
+          weight_initialized_ = true;
+          CHECK_EQ(n, req_data.vals.size());
+          std::cout << "Init weight" << std::endl;
+          weight_ = VectorXd::Zero(n);
+          for (int i = 0; i < n; ++i) {
+            weight_(i) = req_data.vals[i];
+          }
+          server->Response(req_meta);
           accumulated_grad_.initialized = false;
-        }
-      } else {
-        CHECK_EQ(n+1, req_data.vals.size());
-        if (sync_mode_) {
+        } else {
+          CHECK_EQ(n+1, req_data.vals.size());
           auto &merged = accumulated_grad_;
           // initialization
           if (!merged.initialized) {
@@ -136,61 +143,69 @@ private:
             merged.naggregates = 0;
             show_test = true;
           }
-        } else { // async push
-          for (size_t i = 0; i < n; ++i) {
-            // SGD
-            weight_(i) -= learning_rate_ * req_data.vals[i] / req_data.vals[n];
-            // TODO: proximal step
-          }
-          server->Response(req_meta);
         }
-      }
-      // read testing data
-      if (show_test) {
-        std::string root = ps::Environment::Get()->find("DATA_DIR");
-        std::string test_filename = root + "/test/part-001";
-        lrprox::data_reader test_dr = lrprox::data_reader(test_filename, ndims_-1);
-        time_t rawtime;
-        time(&rawtime);
-        struct tm* curr_time = localtime(&rawtime);
-        lrprox::LR lr = lrprox::LR(ndims_);
-        lr.updateWeight(weight_);
-        double cost = lr.cost(test_dr.getX(), test_dr.gety()) / test_dr.getX().rows();
-        if (use_proximal_) {
-          if (proximal_op_ == 1) {
-            // l1 proximal
-            cost = cost + prox_opl1.cost(weight_);
+        // read testing data
+        if (show_test) {
+          std::string root = ps::Environment::Get()->find("DATA_DIR");
+          std::string test_filename = root + "/test/part-001";
+          lrprox::data_reader test_dr = lrprox::data_reader(test_filename, ndims_-1);
+          time_t rawtime;
+          time(&rawtime);
+          struct tm* curr_time = localtime(&rawtime);
+          lrprox::LR lr = lrprox::LR(ndims_);
+          lr.updateWeight(weight_);
+          double cost = lr.cost(test_dr.getX(), test_dr.gety()) / test_dr.getX().rows();
+          if (use_proximal_) {
+            if (proximal_op_ == 1) {
+              // l1 proximal
+              cost = cost + prox_opl1.cost(weight_);
+            }
+            else if (proximal_op_ == 2) {
+              // l2 proximal
+              cost = cost + prox_opl2.cost(weight_);
+            }
           }
-          else if (proximal_op_ == 2) {
-            // l2 proximal
-            cost = cost + prox_opl2.cost(weight_);
-          }
+          std::cout << std::setfill ('0') << std::setw(2) << curr_time->tm_hour << ':' << std::setfill ('0') << std::setw(2)
+                    << curr_time->tm_min << ':' << std::setfill ('0') << std::setw(2) << curr_time->tm_sec
+                    << " Iteration "<< global_ts_ << ", cost: " << cost
+                    << std::endl;
+          show_test = false;
         }
-        std::cout << std::setfill ('0') << std::setw(2) << curr_time->tm_hour << ':' << std::setfill ('0') << std::setw(2)
-                  << curr_time->tm_min << ':' << std::setfill ('0') << std::setw(2) << curr_time->tm_sec
-                  << " Iteration "<< global_ts_ << ", cost: " << cost
-                  << std::endl;
-        show_test = false;
-      }
-    } else { // pull
-      CHECK(weight_initialized_);
+      } else { // pull
+        CHECK(weight_initialized_);
 
-      ps::KVPairs<Val> response;
-      response.keys = req_data.keys;
-      response.vals.resize(n);
-      for (size_t i = 0; i < n; ++i) {
-        response.vals[i] = weight_(i);
+        ps::KVPairs<Val> response;
+        response.keys = req_data.keys;
+        response.vals.resize(n);
+        for (size_t i = 0; i < n; ++i) {
+          response.vals[i] = weight_(i);
+        }
+        // timestamp
+        // note: update timestamp only for synchronous mode
+
+        if (global_ts_ == num_iteration_) {
+          // termination signal
+          response.ts1 = -1;
+        }
+        else {
+          response.ts1 = global_ts_;
+        }
+        response.ts2 = global_ts_ + 1;
+        server->Response(req_meta, response);
+        // TODO: semi-synchronous
       }
-      // timestamp
-      // note: update timestamp only for synchronous mode
-      response.ts1 = global_ts_;
-      response.ts2 = global_ts_ + 1;
-      server->Response(req_meta, response);
-      // TODO: semi-synchronous
     }
+    else if(sync_mode_ == 2) {
+      //// semi-sync without vr
+    }
+    else if(sync_mode_ == 3) {
+      //// semi-sync with vr
+    }
+
   }
 
-  bool sync_mode_;
+  int sync_mode_;
+  int num_iteration_;
   double learning_rate_;
   // timestamp for iterations
   int global_ts_;
@@ -228,7 +243,15 @@ void RunWorker() {
     return;
   }
 
-  bool sync_mode = !strcmp(ps::Environment::Get()->find("SYNC_MODE"), "1");
+  int sync_mode;
+
+  if (ps::Environment::Get()->find("SYNC_MODE") != nullptr) {
+    sync_mode = util::ToInt(ps::Environment::Get()->find("SYNC_MODE"));
+  }
+  else {
+    // default: sync mode
+    sync_mode = 1;
+  }
 
   // data folder
   std::string root = ps::Environment::Get()->find("DATA_DIR");
@@ -264,9 +287,7 @@ void RunWorker() {
   ps::Postoffice::Get()->Barrier(ps::kWorkerGroup);
 
   std::cout << "Worker[" << rank << "]: start working..." << std::endl;
-  int num_iteration = util::ToInt(ps::Environment::Get()->find("NUM_ITERATION"));
-  int batch_size = util::ToInt(ps::Environment::Get()->find("BATCH_SIZE"));
-  int test_interval = util::ToInt(ps::Environment::Get()->find("TEST_INTERVAL"));
+//  int num_iteration = util::ToInt(ps::Environment::Get()->find("NUM_ITERATION"));
 
   // add timer
   std::chrono::time_point<std::chrono::system_clock> start;
@@ -281,25 +302,39 @@ void RunWorker() {
 
   int ts1, ts2;
 
-  for (int i = 0; i < num_iteration; ++i) {
+  if (sync_mode == 1) {
+    //// sync mode
+    while(true) {
 
-    // pull
-    kv->Wait(kv->Pull(keys_pull, &vec_weight_pull, nullptr, 0, nullptr, &ts1, &ts2));
-    // copy to eigen
-    // TODO: improvement?
-    lr.updateWeight(vec_weight_pull);
-    // gradient
-    VectorXd::Map(&vec_weight_push[0], ndims) = lr.grad(dr.getX(), dr.gety());
-    // naggregates
-    vec_weight_push[ndims] = dr.getX().rows();
-    // push
-    kv->Wait(kv->Push(keys_push, vec_weight_push));
-    if (sync_mode) {
-      ps::Postoffice::Get()->Barrier(ps::kWorkerGroup);
+      // pull
+      kv->Wait(kv->Pull(keys_pull, &vec_weight_pull, nullptr, 0, nullptr, &ts1, &ts2));
+      // termination
+      if (ts1 == -1) {
+        break;
+      }
+      // copy to eigen
+      // TODO: improvement?
+      lr.updateWeight(vec_weight_pull);
+      // gradient
+      VectorXd::Map(&vec_weight_push[0], ndims) = lr.grad(dr.getX(), dr.gety());
+      // naggregates
+      vec_weight_push[ndims] = dr.getX().rows();
+      // push
+      kv->Wait(kv->Push(keys_push, vec_weight_push));
+      if (sync_mode) {
+        ps::Postoffice::Get()->Barrier(ps::kWorkerGroup);
+      }
+
     }
-
+  }
+  else if (sync_mode == 2) {
+    //// semi-sync without vr
+  }
+  else if (sync_mode == 3) {
+    //// semi-sync with vr
   }
 
+  ps::Postoffice::Get()->Barrier(ps::kWorkerGroup);
   if (rank == 0) {
     // duration
     std::chrono::time_point<std::chrono::system_clock> end_time = std::chrono::system_clock::now();
