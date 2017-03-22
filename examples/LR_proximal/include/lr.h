@@ -27,7 +27,7 @@ namespace lrprox {
     void updateWeight(const std::vector<double>& weight);
     void updateWeight(const VectorXd& weight);
 //
-//    bool saveModel(std::string &filename);
+//    bool saveModel(const std::string &filename);
 
 //  std::string DebugInfo();
 

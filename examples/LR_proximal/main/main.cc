@@ -94,6 +94,18 @@ public:
     // TODO: initialize weights
     weight_ = VectorXd::Ones(ndims_);
     weight_initialized_ = true;
+    // initialize update
+    update_ = VectorXd::Zero(ndims_);
+
+    // save model
+    time_t rawtime;
+    struct tm *timeinfo;
+    char buffer[80];
+    time(&rawtime);
+    timeinfo = localtime(&rawtime);
+    strftime (buffer, 80, "%Y%m%d%H%M%S", timeinfo);
+    save_filename = ps::Environment::Get()->find("SAVE_PREFIX") + string(buffer);
+    cout << save_filename << endl;
   }
 
   ~KVStoreDistServer() {
@@ -106,12 +118,17 @@ private:
 
   // timer
   static void *SyncTimer(void *ptr) {
-
+    // only for DGD-NOVR
     struct timespec time_to_wait = {0, tau_};
 
     while (true) {
       pthread_mutex_lock(&timer_mutex_);
-      pthread_cond_timedwait(&timer_cond_, &timer_mutex_, &time_to_wait);
+      if (global_ts_ == 0) {
+        pthread_cond_wait(&timer_cond_, &timer_mutex_);
+      }
+      else {
+        pthread_cond_timedwait(&timer_cond_, &timer_mutex_, &time_to_wait);
+      }
       pthread_mutex_unlock(&timer_mutex_);
 
       pthread_mutex_lock(&weight_mutex_);
@@ -120,7 +137,7 @@ private:
       // update the weight
       // gradient descent
       auto &merged = accumulated_grad_;
-      cout << " Iteration "<< global_ts_ << ", received: " << merged.naggregates << endl;
+//      cout << " Iteration "<< global_ts_ << ", received: " << merged.naggregates << endl;
       weight_ -= learning_rate_ * merged.vals / merged.naggregates;
       if (use_proximal_) {
         if (proximal_op_ == 1) {
@@ -153,9 +170,110 @@ private:
           response.ts1 = -1;
         }
         else {
-          response.ts1 = global_ts_;
+          response.ts1 = global_ts_ - 1;
         }
-        response.ts2 = global_ts_ + 1;
+        response.ts2 = global_ts_;
+
+        ps_server_->Response(pull_req.req_meta, response);
+      }
+      // erase
+      pull_buf.clear();
+
+      // read testing data
+      std::string root = ps::Environment::Get()->find("DATA_DIR");
+      std::string test_filename = root + "/test/part-001";
+      lrprox::data_reader test_dr = lrprox::data_reader(test_filename, ndims_-1);
+      time_t rawtime;
+      time(&rawtime);
+      struct tm* curr_time = localtime(&rawtime);
+      lrprox::LR lr = lrprox::LR(ndims_);
+      lr.updateWeight(weight_);
+      double cost = lr.cost(test_dr.getX(), test_dr.gety()) / test_dr.getX().rows();
+      if (use_proximal_) {
+        if (proximal_op_ == 1) {
+          // l1 proximal
+          cost = cost + prox_opl1.cost(weight_);
+        }
+        else if (proximal_op_ == 2) {
+          // l2 proximal
+          cost = cost + prox_opl2.cost(weight_);
+        }
+      }
+      std::cout << std::setfill ('0') << std::setw(2) << curr_time->tm_hour << ':' << std::setfill ('0') << std::setw(2)
+                << curr_time->tm_min << ':' << std::setfill ('0') << std::setw(2) << curr_time->tm_sec
+                << " Iteration "<< global_ts_ << ", cost: " << cost
+                << std::endl;
+
+      pthread_mutex_unlock(&weight_mutex_);
+
+      if (global_ts_ == num_iteration_) {
+        // termination signal
+        break;
+      }
+    }
+
+    return NULL;
+  }
+
+  static void *SyncTimerUpdate(void *ptr) {
+    // only for DGD-VR
+    struct timespec time_to_wait = {0, tau_};
+
+    while (true) {
+      pthread_mutex_lock(&timer_mutex_);
+      if (global_ts_ == 0) {
+        pthread_cond_wait(&timer_cond_, &timer_mutex_);
+      }
+      else {
+        pthread_cond_timedwait(&timer_cond_, &timer_mutex_, &time_to_wait);
+      }
+      pthread_mutex_unlock(&timer_mutex_);
+
+      pthread_mutex_lock(&weight_mutex_);
+
+      // timeout, then apply gradient and synchronize
+      // update the weight
+      // gradient descent
+      auto &merged = accumulated_grad_;
+//      cout << " Iteration "<< global_ts_ << ", received: " << merged.naggregates << endl;
+      weight_ -= learning_rate_ * (merged.vals / merged.naggregates + update_ / nsamples_);
+      if (use_proximal_) {
+        if (proximal_op_ == 1) {
+          // l1 proximal
+          weight_ = prox_opl1.proximal(weight_, learning_rate_);
+        }
+        else if (proximal_op_ == 2) {
+          // l2 proximal
+          weight_ = prox_opl2.proximal(weight_, learning_rate_);
+        }
+      }
+      // renew update
+      update_ = update_ + merged.vals;
+      // timestamp
+      global_ts_++;
+      // clear
+      merged.vals.setZero(ndims_);
+      merged.naggregates = 0;
+      // TODO: pull buffer
+      ps::KVPairs<Val> response;
+      response.vals.resize(ndims_);
+      for (size_t i = 0; i < ndims_; ++i) {
+        response.vals[i] = weight_(i);
+      }
+      for (auto const &pull_req : pull_buf) {
+        // TODO: for one single server, the keys are not necessary for pull
+        response.keys = pull_req.response.keys;
+        // timestamp
+        // note: update timestamp only for synchronous mode
+
+        if (global_ts_ == num_iteration_) {
+          // termination signal
+          response.ts1 = -1;
+        }
+        else {
+          response.ts1 = update_tracker[pull_req.req_meta.sender];
+        }
+        response.ts2 = global_ts_;
 
         ps_server_->Response(pull_req.req_meta, response);
       }
@@ -232,6 +350,7 @@ private:
 
         server->Response(req_meta);
         // synchronization
+        // TODO: use the number of workers
         if (merged.naggregates == nsamples_) {
 //              std::cout << "apply gradients" << std::endl;
           // update the weight
@@ -301,7 +420,7 @@ private:
         else {
           response.ts1 = global_ts_;
         }
-        response.ts2 = global_ts_ + 1;
+        response.ts2 = global_ts_;
         server->Response(req_meta, response);
         // TODO: semi-synchronous
       }
@@ -320,7 +439,7 @@ private:
         int ts1, ts2;
         ts1 = req_data.vals[n+1];
         ts2 = req_data.vals[n+2];
-        if (ts2 == global_ts_ + 1) {
+        if (ts2 == global_ts_) {
           // valid push
           auto &merged = accumulated_grad_;
           // initialization
@@ -337,10 +456,10 @@ private:
           merged.naggregates += req_data.vals[n];
 
           // synchronization
-//          if (merged.naggregates == nsamples_) {
-//            // trigger
-//            pthread_cond_broadcast(&timer_cond_);
-//          }
+          if (merged.naggregates == nsamples_) {
+            // trigger
+            pthread_cond_broadcast(&timer_cond_);
+          }
         }
 
         pthread_mutex_unlock(&weight_mutex_);
@@ -351,7 +470,21 @@ private:
         // TODO: special case: first pull
 
         pthread_mutex_lock(&weight_mutex_);
-        if (pull_tracker.count(req_meta.sender) == 0) {
+        if (global_ts_ == num_iteration_) {
+          // terminate signal
+          ps::KVPairs<Val> response;
+          response.keys = req_data.keys;
+          response.vals.resize(n);
+          for (size_t i = 0; i < n; ++i) {
+            response.vals[i] = weight_(i);
+          }
+          // timestamp
+          // should be 0
+          response.ts1 = -1;
+          response.ts2 = global_ts_;
+          server->Response(req_meta, response);
+        }
+        else if (pull_tracker.count(req_meta.sender) == 0) {
           // first pull
           pull_tracker[req_meta.sender] = 1;
           ps::KVPairs<Val> response;
@@ -361,8 +494,9 @@ private:
             response.vals[i] = weight_(i);
           }
           // timestamp
+          // should be 0
           response.ts1 = global_ts_;
-          response.ts2 = global_ts_ + 1;
+          response.ts2 = global_ts_;
           server->Response(req_meta, response);
 
           if (pull_tracker.size() == ps::NumWorkers()) {
@@ -386,6 +520,100 @@ private:
     }
     else if(sync_mode_ == 3) {
       //// semi-sync with vr
+      if (req_meta.push) {
+
+        // 3 additional value: naggregates, ts1, ts2
+        CHECK_EQ(n+3, req_data.vals.size());
+        // response
+        server->Response(req_meta);
+
+        pthread_mutex_lock(&weight_mutex_);
+        // drop old message
+        int ts1, ts2;
+        ts1 = req_data.vals[n+1];
+        ts2 = req_data.vals[n+2];
+        if (ts2 == global_ts_ && ts1 == update_tracker[req_meta.sender]) {
+          // valid push
+          auto &merged = accumulated_grad_;
+          // initialization
+          if (!merged.initialized) {
+            merged.initialized = true;
+            merged.vals = VectorXd::Zero(n);
+            merged.naggregates = 0;
+          }
+
+          for (int i = 0; i < n; ++i) {
+            merged.vals(i) += req_data.vals[i];
+          }
+          // the last element is the number of gradients
+          merged.naggregates += req_data.vals[n];
+
+          // update the tracker
+          update_tracker[req_meta.sender] = global_ts_;
+
+          // synchronization
+          if (merged.naggregates == nsamples_) {
+            // trigger
+            pthread_cond_broadcast(&timer_cond_);
+          }
+        }
+
+        pthread_mutex_unlock(&weight_mutex_);
+
+      } else { // pull
+        CHECK(weight_initialized_);
+
+        pthread_mutex_lock(&weight_mutex_);
+        if (global_ts_ == num_iteration_) {
+          // terminate signal
+          ps::KVPairs<Val> response;
+          response.keys = req_data.keys;
+          response.vals.resize(n);
+          for (size_t i = 0; i < n; ++i) {
+            response.vals[i] = weight_(i);
+          }
+          // timestamp
+          // should be 0
+          response.ts1 = -1;
+          response.ts2 = global_ts_;
+          server->Response(req_meta, response);
+        }
+        else if (pull_tracker.count(req_meta.sender) == 0) {
+          // first pull
+          pull_tracker[req_meta.sender] = 1;
+          ps::KVPairs<Val> response;
+          response.keys = req_data.keys;
+          response.vals.resize(n);
+          for (size_t i = 0; i < n; ++i) {
+            response.vals[i] = weight_(i);
+          }
+          // timestamp
+          // should be 0
+          response.ts1 = global_ts_;
+          response.ts2 = global_ts_;
+          // initialize update_tracker
+          update_tracker[req_meta.sender] = 0;
+          server->Response(req_meta, response);
+
+          if (pull_tracker.size() == ps::NumWorkers()) {
+            // TODO: use another handler for DGD-VR
+            pthread_create(&timer_thread_, NULL, this->SyncTimerUpdate, NULL);
+            pthread_detach(timer_thread_);
+          }
+        }
+        else {
+          PullBuf<Val> pull_req;
+          pull_req.response.keys = req_data.keys;
+          pull_req.req_meta = req_meta;
+
+          // buffer
+          pull_buf.push_back(pull_req);
+
+          pull_tracker[req_meta.sender] = pull_tracker[req_meta.sender] + 1;
+        }
+        pthread_mutex_unlock(&weight_mutex_);
+
+      }
     }
 
   }
@@ -395,7 +623,7 @@ private:
   static double learning_rate_;
   // timestamp for iterations
   static int global_ts_;
-  int nsamples_;
+  static int nsamples_;
   static int ndims_;
   bool weight_initialized_;
   static bool use_proximal_;
@@ -413,9 +641,13 @@ private:
   static std::vector<PullBuf<Val>> pull_buf;
   static int tau_;
   static std::map<int, int> pull_tracker;
+  static VectorXd update_;
+  static std::map<int, int> update_tracker;
   static pthread_mutex_t timer_mutex_;
   static pthread_mutex_t weight_mutex_;
   static pthread_cond_t timer_cond_;
+
+  string save_filename;
 
 };
 
@@ -426,6 +658,8 @@ double KVStoreDistServer<Val>::learning_rate_;
 // timestamp for iterations
 template <typename Val>
 int KVStoreDistServer<Val>::global_ts_;
+template <typename Val>
+int KVStoreDistServer<Val>::nsamples_;
 template <typename Val>
 int KVStoreDistServer<Val>::ndims_;
 template <typename Val>
@@ -450,6 +684,10 @@ template <typename Val>
 int KVStoreDistServer<Val>::tau_;
 template <typename Val>
 std::map<int, int> KVStoreDistServer<Val>::pull_tracker;
+template <typename Val>
+VectorXd KVStoreDistServer<Val>::update_;
+template <typename Val>
+std::map<int, int> KVStoreDistServer<Val>::update_tracker;
 template <typename Val>
 pthread_mutex_t KVStoreDistServer<Val>::timer_mutex_;
 template <typename Val>
@@ -479,6 +717,7 @@ struct PushPackage {
 };
 
 void *ComputePushGrad(void *ptr) {
+  // only for DGD-NOVR
   PushPackage *push_package = (PushPackage*)ptr;
   // gradient
   VectorXd::Map(&(push_package->vec_weight_push->at(0)), push_package->ndims) = push_package->lr->grad(push_package->dr->getX(), push_package->dr->gety());
@@ -491,6 +730,59 @@ void *ComputePushGrad(void *ptr) {
     usleep(push_package->delay_usec);
   }
   push_package->kv->Push(*(push_package->keys_push), *(push_package->vec_weight_push));
+  return NULL;
+}
+
+struct UpdatePackage {
+  lrprox::LR *lr;
+  vector<double> *vec_weight_push;
+  ps::KVWorker<double>* kv;
+  std::vector<ps::Key> *keys_push;
+  lrprox::data_reader *dr;
+  int ndims;
+  int ts1;
+  int ts2;
+  std::map<int, VectorXd> *grad_tracker;
+  int *localts;
+  double delay_prob;
+  int delay_usec;
+};
+
+void *ComputePushUpdate(void *ptr) {
+  // only for DGD-VR
+  UpdatePackage *update_package = (UpdatePackage*)ptr;
+  // compute gradient and storage
+//  (*(update_package->grad_tracker))[update_package->ts2] = update_package->lr->grad(update_package->dr->getX(), update_package->dr->gety());
+  update_package->grad_tracker->insert(std::pair<int, VectorXd>(update_package->ts2, update_package->lr->grad(update_package->dr->getX(), update_package->dr->gety())));
+  *(update_package->localts) = update_package->ts2 + 1;
+  // delete cache
+  std::vector<int> ts_to_delete;
+  for (auto const &cache : *(update_package->grad_tracker)) {
+    if (cache.first < update_package->ts1) {
+      ts_to_delete.push_back(cache.first);
+    }
+  }
+  for (auto const &ts : ts_to_delete) {
+    update_package->grad_tracker->erase(ts);
+  }
+  // compute the update
+  if (update_package->ts2 == 0) {
+    VectorXd::Map(&(update_package->vec_weight_push->at(0)), update_package->ndims) = update_package->grad_tracker->at(update_package->ts2);
+  }
+  else {
+//    cerr << update_package->ts1 << ", " << update_package->ts2 << endl;
+    VectorXd::Map(&(update_package->vec_weight_push->at(0)), update_package->ndims) = update_package->grad_tracker->at(update_package->ts2) - update_package->grad_tracker->at(update_package->ts1);
+  }
+  // send the update
+  // timestamps
+  update_package->vec_weight_push->at(update_package->ndims+1) = update_package->ts1;
+  update_package->vec_weight_push->at(update_package->ndims+2) = update_package->ts2;
+  // push, no wait
+  // TODO: simulate the delay
+  if (((double) rand() / (RAND_MAX)) < update_package->delay_prob) {
+    usleep(update_package->delay_usec);
+  }
+  update_package->kv->Push(*(update_package->keys_push), *(update_package->vec_weight_push));
   return NULL;
 }
 
@@ -570,6 +862,9 @@ void RunWorker() {
 
       // pull
       kv->Wait(kv->Pull(keys_pull, &vec_weight_pull, nullptr, 0, nullptr, &ts1, &ts2));
+      if (((double) rand() / (RAND_MAX)) < delay_prob) {
+        usleep(delay_usec);
+      }
       // termination
       if (ts1 == -1) {
         break;
@@ -614,6 +909,9 @@ void RunWorker() {
 
       // pull
       kv->Wait(kv->Pull(keys_pull, &vec_weight_pull, nullptr, 0, nullptr, &ts1, &ts2));
+      if (((double) rand() / (RAND_MAX)) < delay_prob) {
+        usleep(delay_usec);
+      }
       // termination
       if (ts1 == -1) {
         pthread_cancel(grad_thread);
@@ -636,6 +934,58 @@ void RunWorker() {
   }
   else if (sync_mode == 3) {
     //// semi-sync with vr
+    keys_push.push_back(ndims+1);
+    keys_push.push_back(ndims+2);
+    vec_weight_push.push_back(0);
+    vec_weight_push.push_back(0);
+
+    UpdatePackage update_package;
+    update_package.keys_push = &keys_push;
+    update_package.kv = kv;
+    update_package.lr = &lr;
+    update_package.vec_weight_push = &vec_weight_push;
+    update_package.dr = &dr;
+    update_package.ndims = ndims;
+    update_package.delay_prob = delay_prob;
+    update_package.delay_usec = delay_usec;
+    // naggregates
+    vec_weight_push[ndims] = dr.getX().rows();
+    pthread_t update_thread;
+    bool grad_thread_initialized = false;
+    std::map<int, VectorXd> grad_tracker;
+    int localts = 0;
+    update_package.localts = &localts;
+    update_package.grad_tracker = &grad_tracker;
+    while(true) {
+
+      // pull
+      kv->Wait(kv->Pull(keys_pull, &vec_weight_pull, nullptr, 0, nullptr, &ts1, &ts2));
+      if (((double) rand() / (RAND_MAX)) < delay_prob) {
+        usleep(delay_usec);
+      }
+      // termination
+      if (ts1 == -1) {
+        pthread_cancel(update_thread);
+        break;
+      }
+      // drop old message, not sure if really necessary
+      if (ts2 < localts) {
+        continue;
+      }
+      // copy to eigen
+      lr.updateWeight(vec_weight_pull);
+
+      if (grad_thread_initialized) {
+        pthread_cancel(update_thread);
+      }
+
+      update_package.ts1 = ts1;
+      update_package.ts2 = ts2;
+      pthread_create(&update_thread, NULL, ComputePushUpdate, &update_package);
+      pthread_detach(update_thread);
+      grad_thread_initialized = true;
+
+    }
   }
 
   ps::Postoffice::Get()->Barrier(ps::kWorkerGroup);

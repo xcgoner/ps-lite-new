@@ -81,10 +81,12 @@ def mpi_submit(nworker, nserver, pass_envs):
     pass_envs['NUM_FEATURE_DIM'] = 123
     pass_envs['NUM_ITERATION'] = 20
 
+    pass_envs['SAVE_PREFIX'] = '/home/cx2/ClionProjects/ps-lite-new/examples/LR_proximal/script/a9a-data/weight_track_'
+
     pass_envs['PROXIMAL'] = 'l1'
     pass_envs['LAMBDA'] = 0.01
 
-    pass_envs['TAU'] = 600
+    pass_envs['TAU'] = 400
     pass_envs['GD_DELAY_MSG'] = 10
     pass_envs['GD_RESEND_DELAY'] = 1000
 
