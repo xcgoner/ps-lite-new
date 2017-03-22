@@ -474,7 +474,10 @@ struct PushPackage {
   int ndims;
   int ts1;
   int ts2;
+  double delay_prob;
+  int delay_usec;
 };
+
 void *ComputePushGrad(void *ptr) {
   PushPackage *push_package = (PushPackage*)ptr;
   // gradient
@@ -484,8 +487,9 @@ void *ComputePushGrad(void *ptr) {
   push_package->vec_weight_push->at(push_package->ndims+2) = push_package->ts2;
   // push, no wait
   // TODO: simulate the delay
-  if (((double) rand() / (RAND_MAX)) <= 0.5) {
-    sleep(1);
+  if (((double) rand() / (RAND_MAX)) < push_package->delay_prob) {
+    cout << "delayed!" << endl;
+    usleep(push_package->delay_usec);
   }
   push_package->kv->Push(*(push_package->keys_push), *(push_package->vec_weight_push));
   return NULL;
@@ -510,6 +514,12 @@ void RunWorker() {
   std::string root = ps::Environment::Get()->find("DATA_DIR");
   int nfeatures = util::ToInt(ps::Environment::Get()->find("NUM_FEATURE_DIM"));
   int ndims = nfeatures + 1;
+
+  // simulate message delay
+  double delay_prob = util::ToDouble(ps::Environment::Get()->find("GD_DELAY_MSG")) / 100;
+  // millisecond to microsecond
+  int delay_usec = util::ToInt(ps::Environment::Get()->find("GD_RESEND_DELAY")) * 1000;
+  srand (time(NULL) + ps::MyRank());
 
   int rank = ps::MyRank();
   // kv store
@@ -573,6 +583,10 @@ void RunWorker() {
       // naggregates
       vec_weight_push[ndims] = dr.getX().rows();
       // push
+      if (((double) rand() / (RAND_MAX)) < delay_prob) {
+        cout << "delayed!" << endl;
+        usleep(delay_usec);
+      }
       kv->Wait(kv->Push(keys_push, vec_weight_push));
 
       ps::Postoffice::Get()->Barrier(ps::kWorkerGroup);
@@ -592,6 +606,8 @@ void RunWorker() {
     push_package.vec_weight_push = &vec_weight_push;
     push_package.dr = &dr;
     push_package.ndims = ndims;
+    push_package.delay_prob = delay_prob;
+    push_package.delay_usec = delay_usec;
     // naggregates
     vec_weight_push[ndims] = dr.getX().rows();
     pthread_t grad_thread;

@@ -84,8 +84,9 @@ def mpi_submit(nworker, nserver, pass_envs):
     pass_envs['PROXIMAL'] = 'l1'
     pass_envs['LAMBDA'] = 0.01
 
-    pass_envs['TAU'] = 100
-    pass_envs['GD_DROP_MSG'] = 5
+    pass_envs['TAU'] = 600
+    pass_envs['GD_DELAY_MSG'] = 10
+    pass_envs['GD_RESEND_DELAY'] = 10000
 
     # start servers
     if nserver > 0:
