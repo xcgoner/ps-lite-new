@@ -488,7 +488,6 @@ void *ComputePushGrad(void *ptr) {
   // push, no wait
   // TODO: simulate the delay
   if (((double) rand() / (RAND_MAX)) < push_package->delay_prob) {
-    cout << "delayed!" << endl;
     usleep(push_package->delay_usec);
   }
   push_package->kv->Push(*(push_package->keys_push), *(push_package->vec_weight_push));
@@ -584,7 +583,6 @@ void RunWorker() {
       vec_weight_push[ndims] = dr.getX().rows();
       // push
       if (((double) rand() / (RAND_MAX)) < delay_prob) {
-        cout << "delayed!" << endl;
         usleep(delay_usec);
       }
       kv->Wait(kv->Push(keys_push, vec_weight_push));
