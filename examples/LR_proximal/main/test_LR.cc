@@ -89,5 +89,11 @@ int main() {
   }
   cout << endl;
 
+  // test eigen output
+  cout << "---------" << endl;
+  Eigen::IOFormat CleanFmt(Eigen::FullPrecision, 0, ", ", "\t");
+  v1.setRandom();
+  cout << v1.format(CleanFmt) << endl;
+
   return 0;
 }

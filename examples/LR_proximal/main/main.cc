@@ -104,8 +104,10 @@ public:
     time(&rawtime);
     timeinfo = localtime(&rawtime);
     strftime (buffer, 80, "%Y%m%d%H%M%S", timeinfo);
-    save_filename = ps::Environment::Get()->find("SAVE_PREFIX") + string(buffer);
-    cout << save_filename << endl;
+    save_filename_ = ps::Environment::Get()->find("SAVE_PREFIX") + string("sync") + to_string(sync_mode_) + string("_") + string(buffer);
+    cout << save_filename_ << endl;
+
+    start_time_ = std::chrono::system_clock::now();
   }
 
   ~KVStoreDistServer() {
@@ -203,6 +205,15 @@ private:
                 << curr_time->tm_min << ':' << std::setfill ('0') << std::setw(2) << curr_time->tm_sec
                 << " Iteration "<< global_ts_ << ", cost: " << cost
                 << std::endl;
+
+      // save model
+      std::ofstream weight_file;
+      Eigen::IOFormat CleanFmt(Eigen::FullPrecision, 0, ", ", "\t");
+      std::chrono::time_point<std::chrono::system_clock> end_time = std::chrono::system_clock::now();
+      u_int64_t elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(end_time-start_time_).count();
+      weight_file.open (save_filename_, std::ofstream::out | std::ofstream::app);
+      weight_file << elapsed_ms << "\t" << weight_.format(CleanFmt) << endl;
+      weight_file.close();
 
       pthread_mutex_unlock(&weight_mutex_);
 
@@ -305,6 +316,15 @@ private:
                 << " Iteration "<< global_ts_ << ", cost: " << cost
                 << std::endl;
 
+      // save model
+      std::ofstream weight_file;
+      Eigen::IOFormat CleanFmt(Eigen::FullPrecision, 0, ", ", "\t");
+      std::chrono::time_point<std::chrono::system_clock> end_time = std::chrono::system_clock::now();
+      u_int64_t elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(end_time-start_time_).count();
+      weight_file.open (save_filename_, std::ofstream::out | std::ofstream::app);
+      weight_file << elapsed_ms << "\t" << weight_.format(CleanFmt) << endl;
+      weight_file.close();
+
       pthread_mutex_unlock(&weight_mutex_);
 
       if (global_ts_ == num_iteration_) {
@@ -400,6 +420,15 @@ private:
                     << " Iteration "<< global_ts_ << ", cost: " << cost
                     << std::endl;
           show_test = false;
+
+          // save model
+          std::ofstream weight_file;
+          Eigen::IOFormat CleanFmt(Eigen::FullPrecision, 0, ", ", "\t");
+          std::chrono::time_point<std::chrono::system_clock> end_time = std::chrono::system_clock::now();
+          u_int64_t elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(end_time-start_time_).count();
+          weight_file.open (save_filename_, std::ofstream::out | std::ofstream::app);
+          weight_file << elapsed_ms << "\t" << weight_.format(CleanFmt) << endl;
+          weight_file.close();
         }
       } else { // pull
         CHECK(weight_initialized_);
@@ -647,7 +676,9 @@ private:
   static pthread_mutex_t weight_mutex_;
   static pthread_cond_t timer_cond_;
 
-  string save_filename;
+  static string save_filename_;
+
+  static std::chrono::time_point<std::chrono::system_clock> start_time_;
 
 };
 
@@ -694,6 +725,11 @@ template <typename Val>
 pthread_mutex_t KVStoreDistServer<Val>::weight_mutex_;
 template <typename Val>
 pthread_cond_t KVStoreDistServer<Val>::timer_cond_;
+
+template <typename Val>
+string KVStoreDistServer<Val>::save_filename_;
+template <typename Val>
+std::chrono::time_point<std::chrono::system_clock> KVStoreDistServer<Val>::start_time_;
 
 void StartServer() {
   if (!ps::IsServer()) {
