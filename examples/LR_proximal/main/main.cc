@@ -106,6 +106,8 @@ public:
     // initialize update
     update_ = VectorXd::Zero(ndims_);
 
+    accumulated_grad_.initialized = false;
+
     // save model
     time_t rawtime;
     struct tm *timeinfo;
@@ -117,6 +119,19 @@ public:
     cout << save_filename_ << endl;
 
     start_time_ = std::chrono::system_clock::now();
+
+    eval_ = (util::ToInt(ps::Environment::Get()->find("EVAL")) == 1);
+    if (eval_) {
+      cout << "eval mode!" << endl;
+      eval_file_.open(ps::Environment::Get()->find("EVAL_FILE"));
+      eval_file_ >> eval_usec_;
+      for (int i = 0; i < ndims_; i++) {
+        eval_file_ >> weight_(i);
+      }
+    }
+    accumulated_eval_.eval = 0;
+    accumulated_eval_.naggregates = 0;
+
   }
 
   ~KVStoreDistServer() {
@@ -219,7 +234,7 @@ private:
       Eigen::IOFormat CleanFmt(Eigen::FullPrecision, 0, ", ", "\t");
       std::chrono::time_point<std::chrono::system_clock> end_time = std::chrono::system_clock::now();
       u_int64_t elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(end_time-start_time_).count();
-      weight_file.open (save_filename_, std::ofstream::out | std::ofstream::app);
+      weight_file.open(save_filename_, std::ofstream::out | std::ofstream::app);
       weight_file << elapsed_ms << "\t" << weight_.format(CleanFmt) << endl;
       weight_file.close();
 
@@ -352,7 +367,72 @@ private:
     size_t n = ndims_;
     bool show_test = false;
 
-    if (sync_mode_ == 1) {
+    if (eval_) {
+      //// eval mode
+      if (req_meta.push) {
+
+        auto &merged = accumulated_eval_;
+
+        merged.eval += req_data.vals[0];
+        // the last element is the number of gradients
+        merged.naggregates += req_data.vals[1];
+//            if (req_data.vals[n]!=100) {
+//              std::cout << "batchsize: " << req_data.vals[n] << std::endl;
+//              std::cout << "total size: " << merged.naggregates  << std::endl;
+//            }
+
+        // synchronization
+        // TODO: use the number of workers
+        if (merged.naggregates == nsamples_) {
+          // timestamp
+          global_ts_++;
+          merged.eval = merged.eval / merged.naggregates;
+          // proximal
+          if (use_proximal_) {
+            if (proximal_op_ == 1) {
+              // l1 proximal
+              merged.eval += prox_opl1.cost(weight_);
+            }
+            else if (proximal_op_ == 2) {
+              // l2 proximal
+              merged.eval += prox_opl2.cost(weight_);
+            }
+          }
+          std::cout << " Iteration "<< global_ts_ << ", time: " << std::setw(8) << eval_usec_ << ", cost: " << std::setw(8) << merged.eval << std::endl;
+          merged.eval = 0;
+          merged.naggregates = 0;
+          // update weight
+          eval_file_ >> eval_usec_;
+          for (int i = 0; i < ndims_; i++) {
+            eval_file_ >> weight_(i);
+          }
+        }
+        server->Response(req_meta);
+      } else { // pull
+        CHECK(weight_initialized_);
+
+        ps::KVPairs<Val> response;
+        response.keys = req_data.keys;
+        response.vals.resize(n);
+        for (size_t i = 0; i < n; ++i) {
+          response.vals[i] = weight_(i);
+        }
+        // timestamp
+        // note: update timestamp only for synchronous mode
+
+        if (global_ts_ == num_iteration_) {
+          // termination signal
+          response.ts1 = -1;
+        }
+        else {
+          response.ts1 = global_ts_;
+        }
+        response.ts2 = global_ts_;
+        server->Response(req_meta, response);
+        // TODO: semi-synchronous
+      }
+    }
+    else if (sync_mode_ == 1) {
       //// sync mode
       if (req_meta.push) {
 
@@ -375,7 +455,6 @@ private:
 //              std::cout << "total size: " << merged.naggregates  << std::endl;
 //            }
 
-        server->Response(req_meta);
         // synchronization
         // TODO: use the number of workers
         if (merged.naggregates == nsamples_) {
@@ -400,6 +479,8 @@ private:
           merged.naggregates = 0;
           show_test = true;
         }
+
+        server->Response(req_meta);
 
         // read testing data
         if (show_test) {
@@ -686,6 +767,17 @@ private:
 
   static std::chrono::time_point<std::chrono::system_clock> start_time_;
 
+  // evaluation
+  bool eval_;
+  struct MergeEval {
+    double eval;
+    // number of aggregates
+    int naggregates;
+  };
+  MergeEval accumulated_eval_;
+  std::ifstream eval_file_;
+  int eval_usec_;
+
 };
 
 template <typename Val>
@@ -916,7 +1008,40 @@ void RunWorker() {
 
   int ts1 = 0, ts2 = 0;
 
-  if (sync_mode == 1) {
+  bool eval = (util::ToInt(ps::Environment::Get()->find("EVAL")) == 1);
+
+  if (eval) {
+    //// eval mode
+
+    std::vector<ps::Key> keys_eval(2);
+    for (size_t i = 0; i < keys_eval.size(); ++i) {
+      keys_eval[i] = i;
+      keys_eval[i] = i;
+    }
+    vector<double> vec_eval_push(keys_eval.size());
+
+    while(true) {
+
+      // pull
+      kv->Wait(kv->Pull(keys_pull, &vec_weight_pull, nullptr, 0, nullptr, &ts1, &ts2));
+      // termination
+      if (ts1 == -1) {
+        break;
+      }
+      // copy to eigen
+      // TODO: improvement?
+      lr.updateWeight(vec_weight_pull);
+      // eval
+      vec_eval_push[0] = lr.cost(dr.getX(), dr.gety());
+      // naggregates
+      vec_eval_push[1] = dr.getX().rows();
+      // push
+      kv->Wait(kv->Push(keys_eval, vec_eval_push));
+
+      ps::Postoffice::Get()->Barrier(ps::kWorkerGroup);
+    }
+  }
+  else if (sync_mode == 1) {
     //// sync mode
     while(true) {
 

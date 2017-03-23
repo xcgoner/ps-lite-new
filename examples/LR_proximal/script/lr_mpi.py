@@ -19,8 +19,10 @@ parser.add_argument('--log-level', default='INFO', type=str,
                     help = 'logging level')
 parser.add_argument('--log-file', type=str,
                     help = 'output log to the specific log file')
-parser.add_argument('-H', '--hostfile', type=str,
+parser.add_argument('-S', '--serverhost', type=str,
                     help = 'the hostfile of mpi server')
+parser.add_argument('-W', '--workerhost', type=str,
+                    help = 'the hostfile of mpi worker')
 parser.add_argument('command', nargs='+',
                     help = 'command for dmlc program')
 parser.add_argument('--host-ip', type=str,
@@ -64,10 +66,15 @@ def mpi_submit(nworker, nserver, pass_envs):
         """"""
         subprocess.check_call(prog, shell = True)
 
-    cmd = ''
-    if args.hostfile is not None:
-        cmd = '--hostfile %s' % (args.hostfile)
-    cmd += ' ' + ' '.join(args.command) + ' ' + ' '.join(unknown)
+    scmd = ''
+    if args.serverhost is not None:
+        scmd = '--hostfile %s' % (args.serverhost)
+    scmd += ' ' + ' '.join(args.command) + ' ' + ' '.join(unknown)
+
+    wcmd = ''
+    if args.workerhost is not None:
+        wcmd = '--hostfile %s' % (args.workerhost)
+    wcmd += ' ' + ' '.join(args.command) + ' ' + ' '.join(unknown)
 
     """
         SYNC_MODE:
@@ -75,6 +82,10 @@ def mpi_submit(nworker, nserver, pass_envs):
             2:  semi-sync without vr
             3:  semi-sync with vr
     """
+
+    pass_envs['EVAL'] = 1
+    pass_envs['EVAL_FILE'] = '/home/cx2/ClionProjects/ps-lite-new/examples/LR_proximal/script/a9a-data/weight_track_sync3_20170322190411'
+
     pass_envs['SYNC_MODE'] = 1
     pass_envs['TRAIN_DIR'] = '/home/cx2/ClionProjects/ps-lite-new/examples/LR_proximal/script/a9a-data/train/part-'
     pass_envs['TEST_FILE'] = '/home/cx2/ClionProjects/ps-lite-new/examples/LR_proximal/script/a9a-data/test/part-001'
@@ -95,7 +106,7 @@ def mpi_submit(nworker, nserver, pass_envs):
     if nserver > 0:
         pass_envs['LEARNING_RATE'] = 0.1
         pass_envs['DMLC_ROLE'] = 'server'
-        prog = 'mpirun -n %d %s %s' % (nserver, get_mpi_env(pass_envs), cmd)
+        prog = 'mpirun -n %d %s %s' % (nserver, get_mpi_env(pass_envs), scmd)
         thread = Thread(target = run, args=(prog,))
         thread.setDaemon(True)
         thread.start()
@@ -103,7 +114,7 @@ def mpi_submit(nworker, nserver, pass_envs):
     if nworker > 0:
         pass_envs['BATCH_SIZE'] = 100
         pass_envs['DMLC_ROLE'] = 'worker'
-        prog = 'mpirun -n %d %s %s' % (nworker, get_mpi_env(pass_envs), cmd)
+        prog = 'mpirun -n %d %s %s' % (nworker, get_mpi_env(pass_envs), wcmd)
         thread = Thread(target = run, args=(prog,))
         thread.setDaemon(True)
         thread.start()

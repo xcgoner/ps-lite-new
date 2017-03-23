@@ -26,7 +26,7 @@ namespace lrprox {
 
       int line_counter = 0;
       for (auto const& filename : filelist) {
-        std::cout << filename << std::endl;
+//        std::cout << filename << std::endl;
         // count lines
         input.open(filename);
         while (std::getline(input, line)) {
