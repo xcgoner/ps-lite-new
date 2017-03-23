@@ -11,6 +11,7 @@
 #include <Eigen/Dense>
 #include <iomanip>
 #include <unistd.h>
+#include <dirent.h>
 
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wmissing-noreturn"
@@ -33,6 +34,14 @@ struct PullBuf {
   ps::KVMeta req_meta;
   ps::KVPairs<Val> response;
 };
+
+void SplitFilename (const string& str, string& folder, string& prefix)
+{
+  size_t found;
+  found = str.find_last_of("/\\");
+  folder = str.substr(0, found);
+  prefix = str.substr(found + 1);
+}
 
 template <typename Val>
 class KVStoreDistServer {
@@ -182,8 +191,7 @@ private:
       pull_buf.clear();
 
       // read testing data
-      std::string root = ps::Environment::Get()->find("DATA_DIR");
-      std::string test_filename = root + "/test/part-001";
+      std::string test_filename = ps::Environment::Get()->find("TEST_FILE");
       lrprox::data_reader test_dr = lrprox::data_reader(test_filename, ndims_-1);
       time_t rawtime;
       time(&rawtime);
@@ -292,8 +300,7 @@ private:
       pull_buf.clear();
 
       // read testing data
-      std::string root = ps::Environment::Get()->find("DATA_DIR");
-      std::string test_filename = root + "/test/part-001";
+      std::string test_filename = ps::Environment::Get()->find("TEST_FILE");
       lrprox::data_reader test_dr = lrprox::data_reader(test_filename, ndims_-1);
       time_t rawtime;
       time(&rawtime);
@@ -396,8 +403,7 @@ private:
 
         // read testing data
         if (show_test) {
-          std::string root = ps::Environment::Get()->find("DATA_DIR");
-          std::string test_filename = root + "/test/part-001";
+          std::string test_filename = ps::Environment::Get()->find("TEST_FILE");
           lrprox::data_reader test_dr = lrprox::data_reader(test_filename, ndims_-1);
           time_t rawtime;
           time(&rawtime);
@@ -837,8 +843,8 @@ void RunWorker() {
     sync_mode = 1;
   }
 
-  // data folder
-  std::string root = ps::Environment::Get()->find("DATA_DIR");
+  // train data prefix
+  std::string root = ps::Environment::Get()->find("TRAIN_DIR");
   int nfeatures = util::ToInt(ps::Environment::Get()->find("NUM_FEATURE_DIM"));
   int ndims = nfeatures + 1;
 
@@ -887,8 +893,26 @@ void RunWorker() {
 
   // read training data
   // TODO: psuedo-distirbuted environment
-  std::string filename = root + "/train/part-00" + std::to_string(rank + 1);
-  lrprox::data_reader dr = lrprox::data_reader(filename, nfeatures);
+  string folder, prefix;
+  SplitFilename(root, folder, prefix);
+  vector<string> filelist;
+  vector<string> filelist_local;
+  DIR *dpdf;
+  struct dirent *epdf;
+  dpdf = opendir(folder.c_str());
+  if (dpdf != NULL){
+    while (epdf = readdir(dpdf)){
+      if (strncmp(epdf->d_name, prefix.c_str(), prefix.length()) == 0) {
+        filelist.push_back(folder + "/" + string(epdf->d_name));
+      }
+    }
+  }
+  for (int i = 0; i < filelist.size(); i++) {
+    if (i % ps::NumWorkers() == ps::MyRank()) {
+      filelist_local.push_back(filelist[i]);
+    }
+  }
+  lrprox::data_reader dr = lrprox::data_reader(filelist_local, nfeatures);
 
   int ts1 = 0, ts2 = 0;
 

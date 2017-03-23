@@ -20,6 +20,46 @@ namespace lrprox {
   class data_reader {
   public:
     // read sparse classification data, libsvm style
+    explicit data_reader(const std::vector<std::string> &filelist, int num_feature_dim) {
+      std::ifstream input;
+      std::string line, buf;
+
+      int line_counter = 0;
+      for (auto const& filename : filelist) {
+        std::cout << filename << std::endl;
+        // count lines
+        input.open(filename);
+        while (std::getline(input, line)) {
+          line_counter++;
+        }
+        input.close();
+      }
+
+      // initialize
+      // add one column
+      X = MatrixXd::Zero(line_counter, num_feature_dim + 1);
+      y = VectorXi::Zero(line_counter);
+
+      int line_idx = 0;
+      for (auto const& filename : filelist) {
+        input.open(filename);
+        while (std::getline(input, line)) {
+          std::istringstream in(line);
+          in >> buf;
+          y(line_idx) = util::ToInt(buf);
+          while (in >> buf) {
+            auto ss = util::Split(buf, ':');
+            // read sparse data
+            X(line_idx, util::ToInt(ss[0]) - 1) = util::ToDouble(ss[1]);
+          }
+          // bias
+          X(line_idx, num_feature_dim) = 1;
+          line_idx++;
+        }
+        input.close();
+      }
+    }
+
     explicit data_reader(const std::string &filename, int num_feature_dim) {
       std::ifstream input;
       std::string line, buf;

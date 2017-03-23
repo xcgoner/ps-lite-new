@@ -32,6 +32,7 @@ More features:
 can install it by
 ```
 sudo apt-get update && sudo apt-get install -y build-essential git
+sudo apt-get install libopenblas-dev libprotobuf-dev protobuf-compiler
 ```
 Instructions for
 [older Ubuntu](http://ubuntuhandbook.org/index.php/2013/08/install-gcc-4-8-via-ppa-in-ubuntu-12-04-13-04/),

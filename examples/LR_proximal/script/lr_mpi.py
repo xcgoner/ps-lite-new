@@ -75,8 +75,9 @@ def mpi_submit(nworker, nserver, pass_envs):
             2:  semi-sync without vr
             3:  semi-sync with vr
     """
-    pass_envs['SYNC_MODE'] = 3
-    pass_envs['DATA_DIR'] = '/home/cx2/ClionProjects/ps-lite-new/examples/LR_proximal/script/a9a-data'
+    pass_envs['SYNC_MODE'] = 1
+    pass_envs['TRAIN_DIR'] = '/home/cx2/ClionProjects/ps-lite-new/examples/LR_proximal/script/a9a-data/train/part-'
+    pass_envs['TEST_FILE'] = '/home/cx2/ClionProjects/ps-lite-new/examples/LR_proximal/script/a9a-data/test/part-001'
     pass_envs['NSAMPLES'] = 32561
     pass_envs['NUM_FEATURE_DIM'] = 123
     pass_envs['NUM_ITERATION'] = 20
@@ -87,7 +88,7 @@ def mpi_submit(nworker, nserver, pass_envs):
     pass_envs['LAMBDA'] = 0.01
 
     pass_envs['TAU'] = 400
-    pass_envs['GD_DELAY_MSG'] = 10
+    pass_envs['GD_DELAY_MSG'] = 0
     pass_envs['GD_RESEND_DELAY'] = 1000
 
     # start servers

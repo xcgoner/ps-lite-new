@@ -5,7 +5,7 @@ import math
 data_dir = './a9a-data'
 train_file = 'a9a'
 test_file = 'a9a.t'
-num_part = 4
+num_part = 8
 
 def get_data(filename, is_shuffle=True):
     samples = []
