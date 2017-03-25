@@ -509,6 +509,8 @@ private:
           weight_file.open (save_filename_, std::ofstream::out | std::ofstream::app);
           weight_file << elapsed_ms << "\t" << weight_.format(CleanFmt) << endl;
           weight_file.close();
+
+          std::cout << " Iteration " << global_ts_ << std::endl;
         }
 
         server->Response(req_meta);
@@ -1031,6 +1033,10 @@ void RunWorker() {
       }
     }
   }
+  std::sort(filelist.begin(), filelist.end(), [](const string& a, const string& b) {
+    hash<string> hasher;
+    return hasher(b) < hasher(a);
+  });
   for (int i = 0; i < filelist.size(); i++) {
     if (i % ps::NumWorkers() == ps::MyRank()) {
       filelist_local.push_back(filelist[i]);

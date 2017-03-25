@@ -473,7 +473,7 @@ private:
         // TODO: use the number of workers
         cout << merged.naggregates << endl;
         if (merged.naggregates == nsamples_) {
-              cout << "apply gradients" << endl;
+//              cout << "apply gradients" << endl;
           // update the weight
           // gradient descent
           weight_ -= learning_rate_ * merged.vals / merged.naggregates;
@@ -502,6 +502,8 @@ private:
           weight_file.open (save_filename_, std::ofstream::out | std::ofstream::app);
           weight_file << elapsed_ms << "\t" << weight_.format(CleanFmt) << endl;
           weight_file.close();
+
+          std::cout << " Iteration " << global_ts_ << std::endl;
         }
 
         server->Response(req_meta);
@@ -1026,11 +1028,11 @@ void RunWorker() {
   for (int i = 0; i < filelist.size(); i++) {
     if (i % ps::NumWorkers() == ps::MyRank()) {
       filelist_local.push_back(filelist[i]);
-      cout << "Worker[" << rank << "]:" << filelist[i] << endl;
+//      cout << "Worker[" << rank << "]:" << filelist[i] << endl;
     }
   }
   lrprox::data_reader dr = lrprox::data_reader(filelist_local, nfeatures);
-  cout << "Worker[" << rank << "]:" << "Local data size:" << dr.getX().rows() << endl;
+//  cout << "Worker[" << rank << "]:" << "Local data size:" << dr.getX().rows() << endl;
 
   int ts1 = 0, ts2 = 0;
 
