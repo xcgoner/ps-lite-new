@@ -134,8 +134,8 @@ public:
       cout << "eval mode!" << endl;
       eval_file_.open(ps::Environment::Get()->find("EVAL_FILE"));
       eval_file_ >> eval_usec_;
-      for (int i = 0; i < ndims_; i++) {
-        eval_file_ >> weight_(i);
+      for (int i = 0; i < ndims_*nclasses_; i++) {
+        eval_file_ >> weight_.data()[i];
       }
       eval_file_output_.open(ps::Environment::Get()->find("EVAL_FILE") + string("_eval"), std::ofstream::out);
     }
