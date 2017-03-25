@@ -5,7 +5,7 @@ set(EIGEN_INSTALL ${CMAKE_BINARY_DIR}/external/eigen-install)
 
 set( Eigen3_VERSION "3.3.3" )
 
-#add_definitions(-DEIGEN_USE_BLAS -DEIGEN_USE_LAPACKE)
+add_definitions(-DEIGEN_USE_BLAS -DEIGEN_USE_LAPACKE)
 find_package(BLAS REQUIRED)
 ExternalProject_Add(eigen
     PREFIX ${EIGEN_PREFIX}
