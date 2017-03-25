@@ -491,6 +491,15 @@ private:
           merged.vals.setZero(n);
           merged.naggregates = 0;
           show_test = true;
+
+          // save model
+          std::ofstream weight_file;
+          Eigen::IOFormat CleanFmt(Eigen::FullPrecision, 0, ", ", "\t");
+          std::chrono::time_point<std::chrono::system_clock> end_time = std::chrono::system_clock::now();
+          u_int64_t elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(end_time-start_time_).count();
+          weight_file.open (save_filename_, std::ofstream::out | std::ofstream::app);
+          weight_file << elapsed_ms << "\t" << weight_.format(CleanFmt) << endl;
+          weight_file.close();
         }
 
         server->Response(req_meta);
@@ -524,15 +533,6 @@ private:
         else {
 //          std::cout << " Iteration " << global_ts_ << std::endl;
         }
-
-        // save model
-        std::ofstream weight_file;
-        Eigen::IOFormat CleanFmt(Eigen::FullPrecision, 0, ", ", "\t");
-        std::chrono::time_point<std::chrono::system_clock> end_time = std::chrono::system_clock::now();
-        u_int64_t elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(end_time-start_time_).count();
-        weight_file.open (save_filename_, std::ofstream::out | std::ofstream::app);
-        weight_file << elapsed_ms << "\t" << weight_.format(CleanFmt) << endl;
-        weight_file.close();
 
       } else { // pull
         CHECK(weight_initialized_);
