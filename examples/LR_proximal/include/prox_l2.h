@@ -27,9 +27,15 @@ namespace lrprox {
     double cost(const VectorXd& v) {
       return lambda_ * v.lpNorm<2>();
     }
+    double cost(const MatrixXd& v) {
+      return lambda_ * v.lpNorm<2>();
+    }
 
     // gamma is the step size
     VectorXd proximal(const VectorXd& v, double gamma) {
+      return fmax(0, (1 - lambda_ * gamma / v.lpNorm<2>())) * v;
+    }
+    MatrixXd proximal(const MatrixXd& v, double gamma) {
       return fmax(0, (1 - lambda_ * gamma / v.lpNorm<2>())) * v;
     }
 

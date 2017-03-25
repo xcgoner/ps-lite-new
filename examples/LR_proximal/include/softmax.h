@@ -6,6 +6,7 @@
 
 using Eigen::MatrixXd;
 using Eigen::VectorXd;
+using Eigen::VectorXi;
 using Eigen::MatrixXi;
 
 namespace lrprox {
@@ -22,10 +23,14 @@ namespace lrprox {
 ////
 ////    VectorXi predict(const MatrixXd &X);
 ////
-//    const VectorXd& getWeight();
+    const MatrixXd& getWeight();
 //
-//    void updateWeight(const std::vector<double>& weight);
-//    void updateWeight(const VectorXd& weight);
+    void updateWeight(const std::vector<double>& weight);
+    void updateWeight(const MatrixXd& weight);
+
+    void outputWeight(std::vector<double>& weight);
+
+    MatrixXi onehot_encoder(const VectorXi &y);
 //
 //    bool saveModel(const std::string &filename);
 
@@ -33,6 +38,8 @@ namespace lrprox {
 
   private:
     void initWeight_();
+
+    MatrixXd logsumexp(const MatrixXd &X);
 
     // num_dims_ * num_classes_
     MatrixXd weight_;

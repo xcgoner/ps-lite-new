@@ -38,9 +38,10 @@ namespace lrprox {
     return weight_;
   }
   void LR::updateWeight(const std::vector<double>& weight) {
-    for (int i = 0; i < weight.size(); i++) {
-      weight_(i) = weight[i];
-    }
+//    for (int i = 0; i < weight.size(); i++) {
+//      weight_(i) = weight[i];
+//    }
+    weight_ = VectorXd::Map(&weight[0], weight_.size());
   }
   void LR::updateWeight(const VectorXd& weight) {
     weight_ = weight;

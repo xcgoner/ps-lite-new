@@ -128,6 +128,7 @@ public:
       for (int i = 0; i < ndims_; i++) {
         eval_file_ >> weight_(i);
       }
+      eval_file_output_.open(ps::Environment::Get()->find("EVAL_FILE") + string("_eval"), std::ofstream::out);
     }
     accumulated_eval_.eval = 0;
     accumulated_eval_.naggregates = 0;
@@ -282,7 +283,7 @@ private:
         }
       }
       // renew update
-      update_ = update_ + merged.vals;
+      update_ = update_.eval() + merged.vals;
       // timestamp
       global_ts_++;
       // clear
@@ -399,12 +400,19 @@ private:
             }
           }
           std::cout << " Iteration "<< global_ts_ << ", time: " << std::setw(8) << eval_usec_ << ", cost: " << std::setw(8) << merged.eval << std::endl;
+          eval_file_output_ << " Iteration "<< global_ts_ << ", time: " << std::setw(8) << eval_usec_ << ", cost: " << std::setw(8) << merged.eval << std::endl;
           merged.eval = 0;
           merged.naggregates = 0;
-          // update weight
-          eval_file_ >> eval_usec_;
-          for (int i = 0; i < ndims_; i++) {
-            eval_file_ >> weight_(i);
+          if (global_ts_ == num_iteration_) {
+            eval_file_output_.close();
+            eval_file_.close();
+          }
+          else {
+            // update weight
+            eval_file_ >> eval_usec_;
+            for (int i = 0; i < ndims_; i++) {
+              eval_file_ >> weight_(i);
+            }
           }
         }
         server->Response(req_meta);
@@ -776,6 +784,7 @@ private:
   };
   MergeEval accumulated_eval_;
   std::ifstream eval_file_;
+  std::ofstream eval_file_output_;
   int eval_usec_;
 
 };

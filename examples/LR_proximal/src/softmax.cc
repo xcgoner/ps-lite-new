@@ -3,14 +3,17 @@
 #include <ctime>
 #include <iostream>
 #include <vector>
+#include <map>
+#include <algorithm>
 #include <fstream>
 
 #include <Eigen/Dense>
 
 using Eigen::MatrixXd;
 using Eigen::VectorXd;
+using Eigen::VectorXi;
 using Eigen::MatrixXi;
-using Eigen::ArrayXd;
+using Eigen::ArrayXXd;
 
 namespace lrprox {
 
@@ -22,39 +25,71 @@ namespace lrprox {
   double SOFTMAX::cost(const MatrixXd &X, const MatrixXi &Y) {
     // X: n * num_dims, y: n * num_classes
     // minimize negative log prob
-    ArrayXd term1 = (X * weight_).array();
+    ArrayXXd term1 = (X * weight_).array();
     // do not take average
-
-
-    return term1.exp().matrix().colwise().sum().array().log().sum() - (term1 * Y.cast<double>().array()).sum();
+    return ((logsumexp(term1.matrix()).replicate(1, term1.cols()).array() - term1) * Y.cast<double>().array()).sum();
   }
 
   MatrixXd SOFTMAX::grad(const MatrixXd &X, const MatrixXi &Y) {
     MatrixXd term1 = (X * weight_).array().exp().matrix();
-    ArrayXd P = term1.array() / term1.rowwise().sum().replicate(1, term1.cols()).array();
+    ArrayXXd P = term1.array() / term1.rowwise().sum().replicate(1, term1.cols()).array();
 
     return X.transpose() * (P - Y.cast<double>().array()).matrix();
-  }
-////
-////  VectorXi predict(const MatrixXd &X);
-////
-//  const VectorXd& SOFTMAX::getWeight() {
 //    return weight_;
-//  }
-//  void SOFTMAX::updateWeight(const std::vector<double>& weight) {
-//    for (int i = 0; i < weight.size(); i++) {
-//      weight_(i) = weight[i];
-//    }
-//  }
-//  void SOFTMAX::updateWeight(const VectorXd& weight) {
-//    weight_ = weight;
-//  }
+  }
+//
+//  VectorXi predict(const MatrixXd &X);
+//
+  const MatrixXd& SOFTMAX::getWeight() {
+    return weight_;
+  }
+  void SOFTMAX::updateWeight(const std::vector<double>& weight) {
+    for (int i = 0; i < weight_.cols(); i++) {
+      weight_.col(i) = VectorXd::Map(&weight[i*weight_.rows()], weight_.rows());
+    }
+  }
+  void SOFTMAX::updateWeight(const MatrixXd& weight) {
+    weight_ = weight;
+  }
+
+  void SOFTMAX::outputWeight(std::vector<double>& weight) {
+    weight.resize(weight_.rows() * weight_.cols());
+    for (int i = 0; i < weight_.cols(); i++) {
+       VectorXd::Map(&weight[i*weight_.rows()], weight_.rows()) = weight_.col(i);
+    }
+  }
+
+  MatrixXi SOFTMAX::onehot_encoder(const VectorXi &y) {
+    std::vector<int> labels;
+    std::map<int, int> label_to_idx;
+    for (int i = 0; i < y.size(); i++) {
+      if (label_to_idx.count(y(i)) == 0) {
+        label_to_idx[y(i)] = 1;
+        labels.push_back(y(i));
+      }
+    }
+    std::sort(labels.begin(), labels.end());
+    for (int i = 0; i < labels.size(); i++) {
+      label_to_idx[labels[i]] = i;
+    }
+    MatrixXi Y = MatrixXi::Zero(y.size(), labels.size());
+    for (int i = 0; i < y.size(); i++) {
+      Y(i, label_to_idx[y(i)]) = 1;
+    }
+    return Y;
+  }
+
 //
 //  bool saveModel(std::string &filename);
 
   void SOFTMAX::initWeight_() {
 //    weight_ = MatrixXd::Random(num_dims_, num_classes_);
     weight_ = MatrixXd::Ones(num_dims_, num_classes_);
+  }
+
+  MatrixXd SOFTMAX::logsumexp(const MatrixXd &X) {
+    MatrixXd max_X = X.rowwise().maxCoeff();
+    return max_X + (X - max_X.replicate(1, X.cols())).array().exp().matrix().rowwise().sum().array().log().matrix();
   }
 
 

@@ -4,7 +4,6 @@
 #include <map>
 #include "util.h"
 #include "data_reader.h"
-#include "lr.h"
 #include "softmax.h"
 #include "prox_l1.h"
 #include "prox_l2.h"
@@ -25,7 +24,7 @@ using namespace std;
 //using namespace ps;
 
 struct MergeBuf {
-  VectorXd vals;
+  MatrixXd vals;
   // number of aggregates
   int naggregates;
   bool initialized;
@@ -42,6 +41,14 @@ void SplitFilename (const string& str, string& folder, string& prefix)
   found = str.find_last_of("/\\");
   folder = str.substr(0, found);
   prefix = str.substr(found + 1);
+}
+
+void copyMatrix(const MatrixXd& weight_, std::vector<double>& weight) {
+//  weight.resize(weight_.rows() * weight_.cols());
+  // assume initialized
+  for (int i = 0; i < weight_.cols(); i++) {
+    VectorXd::Map(&weight[i*weight_.rows()], weight_.rows()) = weight_.col(i);
+  }
 }
 
 template <typename Val>
@@ -69,6 +76,7 @@ public:
     nsamples_ = util::ToInt(ps::Environment::Get()->find("NSAMPLES"));
     // an addition column for all 1
     ndims_ = util::ToInt(ps::Environment::Get()->find("NUM_FEATURE_DIM")) + 1;
+    nclasses_ = util::ToInt(ps::Environment::Get()->find("NUM_CLASS"));
     weight_initialized_ = false;
     // TODO: regularization
     auto proximal_op = ps::Environment::Get()->find("PROXIMAL");
@@ -102,10 +110,10 @@ public:
 
 
     // TODO: initialize weights
-    weight_ = VectorXd::Ones(ndims_);
+    weight_ = MatrixXd::Ones(ndims_, nclasses_);
     weight_initialized_ = true;
     // initialize update
-    update_ = VectorXd::Zero(ndims_);
+    update_ = MatrixXd::Zero(ndims_, nclasses_);
 
     accumulated_grad_.initialized = false;
 
@@ -129,6 +137,7 @@ public:
       for (int i = 0; i < ndims_; i++) {
         eval_file_ >> weight_(i);
       }
+      eval_file_output_.open(ps::Environment::Get()->find("EVAL_FILE") + string("_eval"), std::ofstream::out);
     }
     accumulated_eval_.eval = 0;
     accumulated_eval_.naggregates = 0;
@@ -147,6 +156,7 @@ private:
   static void *SyncTimer(void *ptr) {
     // only for DGD-NOVR
     struct timespec time_to_wait = {0, tau_};
+    int n = ndims_ * nclasses_;
 
     while (true) {
       pthread_mutex_lock(&timer_mutex_);
@@ -178,13 +188,13 @@ private:
       }
       // timestamp
       global_ts_++;
-      merged.vals.setZero(ndims_);
+      merged.vals.setZero(ndims_, nclasses_);
       merged.naggregates = 0;
       // TODO: pull buffer
       ps::KVPairs<Val> response;
-      response.vals.resize(ndims_);
-      for (size_t i = 0; i < ndims_; ++i) {
-        response.vals[i] = weight_(i);
+      response.vals.resize(n);
+      for (size_t i = 0; i < n; ++i) {
+        response.vals[i] = weight_.data()[i];
       }
       for (auto const &pull_req : pull_buf) {
         // TODO: for one single server, the keys are not necessary for pull
@@ -212,9 +222,10 @@ private:
       time_t rawtime;
       time(&rawtime);
       struct tm* curr_time = localtime(&rawtime);
-      lrprox::LR lr = lrprox::LR(ndims_);
-      lr.updateWeight(weight_);
-      double cost = lr.cost(test_dr.getX(), test_dr.gety()) / test_dr.getX().rows();
+      lrprox::SOFTMAX softmax = lrprox::SOFTMAX(ndims_, nclasses_);
+      MatrixXi test_Y_onehot = softmax.onehot_encoder(test_dr.gety());
+      softmax.updateWeight(weight_);
+      double cost = softmax.cost(test_dr.getX(), test_Y_onehot) / test_dr.getX().rows();
       if (use_proximal_) {
         if (proximal_op_ == 1) {
           // l1 proximal
@@ -232,7 +243,7 @@ private:
 
       // save model
       std::ofstream weight_file;
-      Eigen::IOFormat CleanFmt(Eigen::FullPrecision, 0, ", ", "\t");
+      Eigen::IOFormat CleanFmt(Eigen::FullPrecision, 0, "\t", "\t");
       std::chrono::time_point<std::chrono::system_clock> end_time = std::chrono::system_clock::now();
       u_int64_t elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(end_time-start_time_).count();
       weight_file.open(save_filename_, std::ofstream::out | std::ofstream::app);
@@ -253,6 +264,8 @@ private:
   static void *SyncTimerUpdate(void *ptr) {
     // only for DGD-VR
     struct timespec time_to_wait = {0, tau_};
+
+    int n = ndims_ * nclasses_;
 
     while (true) {
       pthread_mutex_lock(&timer_mutex_);
@@ -283,17 +296,17 @@ private:
         }
       }
       // renew update
-      update_ = update_ + merged.vals;
+      update_ = update_.eval() + merged.vals;
       // timestamp
       global_ts_++;
       // clear
-      merged.vals.setZero(ndims_);
+      merged.vals.setZero(ndims_, nclasses_);
       merged.naggregates = 0;
       // TODO: pull buffer
       ps::KVPairs<Val> response;
-      response.vals.resize(ndims_);
-      for (size_t i = 0; i < ndims_; ++i) {
-        response.vals[i] = weight_(i);
+      response.vals.resize(n);
+      for (size_t i = 0; i < n; ++i) {
+        response.vals[i] = weight_.data()[i];
       }
       for (auto const &pull_req : pull_buf) {
         // TODO: for one single server, the keys are not necessary for pull
@@ -321,9 +334,10 @@ private:
       time_t rawtime;
       time(&rawtime);
       struct tm* curr_time = localtime(&rawtime);
-      lrprox::LR lr = lrprox::LR(ndims_);
-      lr.updateWeight(weight_);
-      double cost = lr.cost(test_dr.getX(), test_dr.gety()) / test_dr.getX().rows();
+      lrprox::SOFTMAX softmax = lrprox::SOFTMAX(ndims_, nclasses_);
+      MatrixXi test_Y_onehot = softmax.onehot_encoder(test_dr.gety());
+      softmax.updateWeight(weight_);
+      double cost = softmax.cost(test_dr.getX(), test_Y_onehot) / test_dr.getX().rows();
       if (use_proximal_) {
         if (proximal_op_ == 1) {
           // l1 proximal
@@ -341,7 +355,7 @@ private:
 
       // save model
       std::ofstream weight_file;
-      Eigen::IOFormat CleanFmt(Eigen::FullPrecision, 0, ", ", "\t");
+      Eigen::IOFormat CleanFmt(Eigen::FullPrecision, 0, "\t", "\t");
       std::chrono::time_point<std::chrono::system_clock> end_time = std::chrono::system_clock::now();
       u_int64_t elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(end_time-start_time_).count();
       weight_file.open (save_filename_, std::ofstream::out | std::ofstream::app);
@@ -365,7 +379,7 @@ private:
                   ps::KVServer<Val>* server) {
     // currently, only support one server
     
-    size_t n = ndims_;
+    size_t n = ndims_*nclasses_;
     bool show_test = false;
 
     if (eval_) {
@@ -377,10 +391,6 @@ private:
         merged.eval += req_data.vals[0];
         // the last element is the number of gradients
         merged.naggregates += req_data.vals[1];
-//            if (req_data.vals[n]!=100) {
-//              std::cout << "batchsize: " << req_data.vals[n] << std::endl;
-//              std::cout << "total size: " << merged.naggregates  << std::endl;
-//            }
 
         // synchronization
         // TODO: use the number of workers
@@ -400,12 +410,19 @@ private:
             }
           }
           std::cout << " Iteration "<< global_ts_ << ", time: " << std::setw(8) << eval_usec_ << ", cost: " << std::setw(8) << merged.eval << std::endl;
+          eval_file_output_ << " Iteration "<< global_ts_ << ", time: " << std::setw(8) << eval_usec_ << ", cost: " << std::setw(8) << merged.eval << std::endl;
           merged.eval = 0;
           merged.naggregates = 0;
-          // update weight
-          eval_file_ >> eval_usec_;
-          for (int i = 0; i < ndims_; i++) {
-            eval_file_ >> weight_(i);
+          if (global_ts_ == num_iteration_) {
+            eval_file_output_.close();
+            eval_file_.close();
+          }
+          else {
+            // update weight
+            eval_file_ >> eval_usec_;
+            for (int i = 0; i < ndims_*nclasses_; i++) {
+              eval_file_ >> weight_.data()[i];
+            }
           }
         }
         server->Response(req_meta);
@@ -416,7 +433,7 @@ private:
         response.keys = req_data.keys;
         response.vals.resize(n);
         for (size_t i = 0; i < n; ++i) {
-          response.vals[i] = weight_(i);
+          response.vals[i] = weight_.data()[i];
         }
         // timestamp
         // note: update timestamp only for synchronous mode
@@ -442,12 +459,12 @@ private:
         // initialization
         if (!merged.initialized) {
           merged.initialized = true;
-          merged.vals = VectorXd::Zero(n);
+          merged.vals = MatrixXd::Zero(ndims_, nclasses_);
           merged.naggregates = 0;
         }
 
         for (int i = 0; i < n; ++i) {
-          merged.vals(i) += req_data.vals[i];
+          merged.vals.data()[i] += req_data.vals[i];
         }
         // the last element is the number of gradients
         merged.naggregates += req_data.vals[n];
@@ -476,7 +493,7 @@ private:
           }
           // timestamp
           global_ts_++;
-          merged.vals.setZero(n);
+          merged.vals.setZero(ndims_, nclasses_);
           merged.naggregates = 0;
           show_test = true;
         }
@@ -490,9 +507,10 @@ private:
           time_t rawtime;
           time(&rawtime);
           struct tm* curr_time = localtime(&rawtime);
-          lrprox::LR lr = lrprox::LR(ndims_);
-          lr.updateWeight(weight_);
-          double cost = lr.cost(test_dr.getX(), test_dr.gety()) / test_dr.getX().rows();
+          lrprox::SOFTMAX softmax = lrprox::SOFTMAX(ndims_, nclasses_);
+          MatrixXi test_Y_onehot = softmax.onehot_encoder(test_dr.gety());
+          softmax.updateWeight(weight_);
+          double cost = softmax.cost(test_dr.getX(), test_Y_onehot) / test_dr.getX().rows();
           if (use_proximal_) {
             if (proximal_op_ == 1) {
               // l1 proximal
@@ -508,24 +526,26 @@ private:
                     << " Iteration "<< global_ts_ << ", cost: " << cost
                     << std::endl;
           show_test = false;
-
-          // save model
-          std::ofstream weight_file;
-          Eigen::IOFormat CleanFmt(Eigen::FullPrecision, 0, ", ", "\t");
-          std::chrono::time_point<std::chrono::system_clock> end_time = std::chrono::system_clock::now();
-          u_int64_t elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(end_time-start_time_).count();
-          weight_file.open (save_filename_, std::ofstream::out | std::ofstream::app);
-          weight_file << elapsed_ms << "\t" << weight_.format(CleanFmt) << endl;
-          weight_file.close();
         }
+
+        // save model
+        std::ofstream weight_file;
+        Eigen::IOFormat CleanFmt(Eigen::FullPrecision, 0, "\t", "\t");
+        std::chrono::time_point<std::chrono::system_clock> end_time = std::chrono::system_clock::now();
+        u_int64_t elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(end_time-start_time_).count();
+        weight_file.open (save_filename_, std::ofstream::out | std::ofstream::app);
+        weight_file << elapsed_ms << "\t" << weight_.format(CleanFmt) << endl;
+        weight_file.close();
+
       } else { // pull
         CHECK(weight_initialized_);
 
         ps::KVPairs<Val> response;
         response.keys = req_data.keys;
+        // TODO: any improvement?
         response.vals.resize(n);
         for (size_t i = 0; i < n; ++i) {
-          response.vals[i] = weight_(i);
+          response.vals[i] = weight_.data()[i];
         }
         // timestamp
         // note: update timestamp only for synchronous mode
@@ -539,7 +559,6 @@ private:
         }
         response.ts2 = global_ts_;
         server->Response(req_meta, response);
-        // TODO: semi-synchronous
       }
     }
     else if(sync_mode_ == 2) {
@@ -562,12 +581,12 @@ private:
           // initialization
           if (!merged.initialized) {
             merged.initialized = true;
-            merged.vals = VectorXd::Zero(n);
+            merged.vals = MatrixXd::Zero(ndims_, nclasses_);
             merged.naggregates = 0;
           }
 
           for (int i = 0; i < n; ++i) {
-            merged.vals(i) += req_data.vals[i];
+            merged.vals.data()[i] += req_data.vals[i];
           }
           // the last element is the number of gradients
           merged.naggregates += req_data.vals[n];
@@ -593,7 +612,7 @@ private:
           response.keys = req_data.keys;
           response.vals.resize(n);
           for (size_t i = 0; i < n; ++i) {
-            response.vals[i] = weight_(i);
+            response.vals[i] = weight_.data()[i];
           }
           // timestamp
           // should be 0
@@ -608,7 +627,7 @@ private:
           response.keys = req_data.keys;
           response.vals.resize(n);
           for (size_t i = 0; i < n; ++i) {
-            response.vals[i] = weight_(i);
+            response.vals[i] = weight_.data()[i];
           }
           // timestamp
           // should be 0
@@ -655,12 +674,12 @@ private:
           // initialization
           if (!merged.initialized) {
             merged.initialized = true;
-            merged.vals = VectorXd::Zero(n);
+            merged.vals = MatrixXd::Zero(ndims_, nclasses_);
             merged.naggregates = 0;
           }
 
           for (int i = 0; i < n; ++i) {
-            merged.vals(i) += req_data.vals[i];
+            merged.vals.data()[i] += req_data.vals[i];
           }
           // the last element is the number of gradients
           merged.naggregates += req_data.vals[n];
@@ -687,7 +706,7 @@ private:
           response.keys = req_data.keys;
           response.vals.resize(n);
           for (size_t i = 0; i < n; ++i) {
-            response.vals[i] = weight_(i);
+            response.vals[i] = weight_.data()[i];
           }
           // timestamp
           // should be 0
@@ -702,7 +721,7 @@ private:
           response.keys = req_data.keys;
           response.vals.resize(n);
           for (size_t i = 0; i < n; ++i) {
-            response.vals[i] = weight_(i);
+            response.vals[i] = weight_.data()[i];
           }
           // timestamp
           // should be 0
@@ -742,14 +761,14 @@ private:
   static int global_ts_;
   static int nsamples_;
   static int ndims_;
+  static int nclasses_;
   bool weight_initialized_;
   static bool use_proximal_;
   static int proximal_op_;
   static lrprox::prox_l1 prox_opl1;
   static lrprox::prox_l2 prox_opl2;
 
-  static VectorXd weight_;
-  std::unordered_map<int, VectorXd> weights_;
+  static MatrixXd weight_;
   static MergeBuf accumulated_grad_;
   static ps::KVServer<double>* ps_server_;
   pthread_t timer_thread_;
@@ -758,7 +777,7 @@ private:
   static std::vector<PullBuf<Val>> pull_buf;
   static int tau_;
   static std::map<int, int> pull_tracker;
-  static VectorXd update_;
+  static MatrixXd update_;
   static std::map<int, int> update_tracker;
   static pthread_mutex_t timer_mutex_;
   static pthread_mutex_t weight_mutex_;
@@ -777,6 +796,7 @@ private:
   };
   MergeEval accumulated_eval_;
   std::ifstream eval_file_;
+  std::ofstream eval_file_output_;
   int eval_usec_;
 
 };
@@ -793,6 +813,8 @@ int KVStoreDistServer<Val>::nsamples_;
 template <typename Val>
 int KVStoreDistServer<Val>::ndims_;
 template <typename Val>
+int KVStoreDistServer<Val>::nclasses_;
+template <typename Val>
 bool KVStoreDistServer<Val>::use_proximal_;
 template <typename Val>
 int KVStoreDistServer<Val>::proximal_op_;
@@ -802,7 +824,7 @@ template <typename Val>
 lrprox::prox_l2 KVStoreDistServer<Val>::prox_opl2;
 
 template <typename Val>
-VectorXd KVStoreDistServer<Val>::weight_;
+MatrixXd KVStoreDistServer<Val>::weight_;
 template <typename Val>
 MergeBuf KVStoreDistServer<Val>::accumulated_grad_;
 template <typename Val>
@@ -815,7 +837,7 @@ int KVStoreDistServer<Val>::tau_;
 template <typename Val>
 std::map<int, int> KVStoreDistServer<Val>::pull_tracker;
 template <typename Val>
-VectorXd KVStoreDistServer<Val>::update_;
+MatrixXd KVStoreDistServer<Val>::update_;
 template <typename Val>
 std::map<int, int> KVStoreDistServer<Val>::update_tracker;
 template <typename Val>
@@ -839,12 +861,14 @@ void StartServer() {
 }
 
 struct PushPackage {
-  lrprox::LR *lr;
+  lrprox::SOFTMAX *softmax;
   vector<double> *vec_weight_push;
   ps::KVWorker<double>* kv;
   std::vector<ps::Key> *keys_push;
-  lrprox::data_reader *dr;
+  MatrixXd *X;
+  MatrixXi *Y_onehot;
   int ndims;
+  int nclasses;
   int ts1;
   int ts2;
   double delay_prob;
@@ -855,10 +879,10 @@ void *ComputePushGrad(void *ptr) {
   // only for DGD-NOVR
   PushPackage *push_package = (PushPackage*)ptr;
   // gradient
-  VectorXd::Map(&(push_package->vec_weight_push->at(0)), push_package->ndims) = push_package->lr->grad(push_package->dr->getX(), push_package->dr->gety());
+  copyMatrix(push_package->softmax->grad(*(push_package->X), *(push_package->Y_onehot)), *(push_package->vec_weight_push));
   // timestamps
-  push_package->vec_weight_push->at(push_package->ndims+1) = push_package->ts1;
-  push_package->vec_weight_push->at(push_package->ndims+2) = push_package->ts2;
+  push_package->vec_weight_push->at(push_package->ndims*push_package->nclasses+1) = push_package->ts1;
+  push_package->vec_weight_push->at(push_package->ndims*push_package->nclasses+2) = push_package->ts2;
   // push, no wait
   // TODO: simulate the delay
   if (((double) rand() / (RAND_MAX)) < push_package->delay_prob) {
@@ -869,15 +893,17 @@ void *ComputePushGrad(void *ptr) {
 }
 
 struct UpdatePackage {
-  lrprox::LR *lr;
+  lrprox::SOFTMAX *softmax;
   vector<double> *vec_weight_push;
   ps::KVWorker<double>* kv;
   std::vector<ps::Key> *keys_push;
-  lrprox::data_reader *dr;
+  MatrixXd *X;
+  MatrixXi *Y_onehot;
   int ndims;
+  int nclasses;
   int ts1;
   int ts2;
-  std::map<int, VectorXd> *grad_tracker;
+  std::map<int, MatrixXd> *grad_tracker;
   int *localts;
   double delay_prob;
   int delay_usec;
@@ -888,7 +914,7 @@ void *ComputePushUpdate(void *ptr) {
   UpdatePackage *update_package = (UpdatePackage*)ptr;
   // compute gradient and storage
 //  (*(update_package->grad_tracker))[update_package->ts2] = update_package->lr->grad(update_package->dr->getX(), update_package->dr->gety());
-  update_package->grad_tracker->insert(std::pair<int, VectorXd>(update_package->ts2, update_package->lr->grad(update_package->dr->getX(), update_package->dr->gety())));
+  update_package->grad_tracker->insert(std::pair<int, MatrixXd>(update_package->ts2, update_package->softmax->grad(*(update_package->X), *(update_package->Y_onehot))));
   *(update_package->localts) = update_package->ts2 + 1;
   // delete cache
   std::vector<int> ts_to_delete;
@@ -902,16 +928,16 @@ void *ComputePushUpdate(void *ptr) {
   }
   // compute the update
   if (update_package->ts2 == 0) {
-    VectorXd::Map(&(update_package->vec_weight_push->at(0)), update_package->ndims) = update_package->grad_tracker->at(update_package->ts2);
+    copyMatrix(update_package->grad_tracker->at(update_package->ts2), *(update_package->vec_weight_push));
   }
   else {
 //    cerr << update_package->ts1 << ", " << update_package->ts2 << endl;
-    VectorXd::Map(&(update_package->vec_weight_push->at(0)), update_package->ndims) = update_package->grad_tracker->at(update_package->ts2) - update_package->grad_tracker->at(update_package->ts1);
+    copyMatrix(update_package->grad_tracker->at(update_package->ts2) - update_package->grad_tracker->at(update_package->ts1), *(update_package->vec_weight_push));
   }
   // send the update
   // timestamps
-  update_package->vec_weight_push->at(update_package->ndims+1) = update_package->ts1;
-  update_package->vec_weight_push->at(update_package->ndims+2) = update_package->ts2;
+  update_package->vec_weight_push->at(update_package->ndims*update_package->nclasses+1) = update_package->ts1;
+  update_package->vec_weight_push->at(update_package->ndims*update_package->nclasses+2) = update_package->ts2;
   // push, no wait
   // TODO: simulate the delay
   if (((double) rand() / (RAND_MAX)) < update_package->delay_prob) {
@@ -938,6 +964,7 @@ void RunWorker() {
 
   // train data prefix
   std::string root = ps::Environment::Get()->find("TRAIN_DIR");
+  int nclasses = util::ToInt(ps::Environment::Get()->find("NUM_CLASS"));
   int nfeatures = util::ToInt(ps::Environment::Get()->find("NUM_FEATURE_DIM"));
   int ndims = nfeatures + 1;
 
@@ -950,22 +977,22 @@ void RunWorker() {
   int rank = ps::MyRank();
   // kv store
   ps::KVWorker<double>* kv = new ps::KVWorker<double>(0);
-  lrprox::LR lr = lrprox::LR(ndims);
+  lrprox::SOFTMAX softmax = lrprox::SOFTMAX(ndims, nclasses);
 
   // initialized the vector used to push
-  vector<double> vec_weight_push(ndims+1);
+  vector<double> vec_weight_push(ndims*nclasses+1);
   // initialized the vector used to pull
-  vector<double> vec_weight_pull(ndims);
+  vector<double> vec_weight_pull(ndims*nclasses);
 
   // additional key for naggregates
-  std::vector<ps::Key> keys_push(ndims+1);
-  std::vector<ps::Key> keys_pull(ndims);
+  std::vector<ps::Key> keys_push(ndims*nclasses+1);
+  std::vector<ps::Key> keys_pull(ndims*nclasses);
   for (size_t i = 0; i < keys_pull.size(); ++i) {
     keys_pull[i] = i;
     keys_push[i] = i;
   }
   // additional key for naggregates
-  keys_push[ndims] = ndims;
+  keys_push[ndims*nclasses] = ndims*nclasses;
 
 //  if (rank == 0) {
 //    auto vals = lr.getWeight();
@@ -1006,6 +1033,7 @@ void RunWorker() {
     }
   }
   lrprox::data_reader dr = lrprox::data_reader(filelist_local, nfeatures);
+  MatrixXi Y_onehot = softmax.onehot_encoder(dr.gety());
 
   int ts1 = 0, ts2 = 0;
 
@@ -1016,7 +1044,6 @@ void RunWorker() {
 
     std::vector<ps::Key> keys_eval(2);
     for (size_t i = 0; i < keys_eval.size(); ++i) {
-      keys_eval[i] = i;
       keys_eval[i] = i;
     }
     vector<double> vec_eval_push(keys_eval.size());
@@ -1031,9 +1058,9 @@ void RunWorker() {
       }
       // copy to eigen
       // TODO: improvement?
-      lr.updateWeight(vec_weight_pull);
+      softmax.updateWeight(vec_weight_pull);
       // eval
-      vec_eval_push[0] = lr.cost(dr.getX(), dr.gety());
+      vec_eval_push[0] = softmax.cost(dr.getX(), Y_onehot);
       // naggregates
       vec_eval_push[1] = dr.getX().rows();
       // push
@@ -1057,11 +1084,12 @@ void RunWorker() {
       }
       // copy to eigen
       // TODO: improvement?
-      lr.updateWeight(vec_weight_pull);
+      softmax.updateWeight(vec_weight_pull);
       // gradient
-      VectorXd::Map(&vec_weight_push[0], ndims) = lr.grad(dr.getX(), dr.gety());
+      // TODO: improvement for data copy?
+      copyMatrix(softmax.grad(dr.getX(), Y_onehot), vec_weight_push);
       // naggregates
-      vec_weight_push[ndims] = dr.getX().rows();
+      vec_weight_push[ndims*nclasses] = dr.getX().rows();
       // push
       if (((double) rand() / (RAND_MAX)) < delay_prob) {
         usleep(delay_usec);
@@ -1073,22 +1101,24 @@ void RunWorker() {
   }
   else if (sync_mode == 2) {
     //// semi-sync without vr
-    keys_push.push_back(ndims+1);
-    keys_push.push_back(ndims+2);
+    keys_push.push_back(ndims*nclasses+1);
+    keys_push.push_back(ndims*nclasses+2);
     vec_weight_push.push_back(0);
     vec_weight_push.push_back(0);
 
     PushPackage push_package;
     push_package.keys_push = &keys_push;
     push_package.kv = kv;
-    push_package.lr = &lr;
+    push_package.softmax = &softmax;
     push_package.vec_weight_push = &vec_weight_push;
-    push_package.dr = &dr;
+    push_package.X = &(dr.getX());
+    push_package.Y_onehot = &Y_onehot;
     push_package.ndims = ndims;
+    push_package.nclasses = nclasses;
     push_package.delay_prob = delay_prob;
     push_package.delay_usec = delay_usec;
     // naggregates
-    vec_weight_push[ndims] = dr.getX().rows();
+    vec_weight_push[ndims*nclasses] = dr.getX().rows();
     pthread_t grad_thread;
     bool grad_thread_initialized = false;
     while(true) {
@@ -1104,7 +1134,7 @@ void RunWorker() {
         break;
       }
       // copy to eigen
-      lr.updateWeight(vec_weight_pull);
+      softmax.updateWeight(vec_weight_pull);
 
       if (grad_thread_initialized) {
         pthread_cancel(grad_thread);
@@ -1120,25 +1150,27 @@ void RunWorker() {
   }
   else if (sync_mode == 3) {
     //// semi-sync with vr
-    keys_push.push_back(ndims+1);
-    keys_push.push_back(ndims+2);
+    keys_push.push_back(ndims*nclasses+1);
+    keys_push.push_back(ndims*nclasses+2);
     vec_weight_push.push_back(0);
     vec_weight_push.push_back(0);
 
     UpdatePackage update_package;
     update_package.keys_push = &keys_push;
     update_package.kv = kv;
-    update_package.lr = &lr;
+    update_package.softmax = &softmax;
     update_package.vec_weight_push = &vec_weight_push;
-    update_package.dr = &dr;
+    update_package.X = &(dr.getX());
+    update_package.Y_onehot = &Y_onehot;
     update_package.ndims = ndims;
+    update_package.nclasses = nclasses;
     update_package.delay_prob = delay_prob;
     update_package.delay_usec = delay_usec;
     // naggregates
-    vec_weight_push[ndims] = dr.getX().rows();
+    vec_weight_push[ndims*nclasses] = dr.getX().rows();
     pthread_t update_thread;
     bool grad_thread_initialized = false;
-    std::map<int, VectorXd> grad_tracker;
+    std::map<int, MatrixXd> grad_tracker;
     int localts = 0;
     update_package.localts = &localts;
     update_package.grad_tracker = &grad_tracker;
@@ -1159,7 +1191,7 @@ void RunWorker() {
         continue;
       }
       // copy to eigen
-      lr.updateWeight(vec_weight_pull);
+      softmax.updateWeight(vec_weight_pull);
 
       if (grad_thread_initialized) {
         pthread_cancel(update_thread);

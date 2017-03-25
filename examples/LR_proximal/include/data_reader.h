@@ -97,11 +97,11 @@ namespace lrprox {
     virtual ~data_reader() {
     }
 
-    const MatrixXd &getX() {
+    MatrixXd &getX() {
       return X;
     }
 
-    const VectorXi &gety() {
+    VectorXi &gety() {
       return y;
     }
 
