@@ -84,7 +84,7 @@ def mpi_submit(nworker, nserver, pass_envs):
     """
 
     pass_envs['EVAL'] = 1
-    pass_envs['EVAL_FILE'] = '/home/cx2/ClionProjects/ps-lite-new/examples/LR_proximal/script/a9a-data/weight_track_sync3_20170322190411'
+    pass_envs['EVAL_FILE'] = '/home/cx2/ClionProjects/ps-lite-new/examples/LR_proximal/script/a9a-data/weight_track_sync1_20170323154200'
 
     pass_envs['SYNC_MODE'] = 1
     pass_envs['TRAIN_DIR'] = '/home/cx2/ClionProjects/ps-lite-new/examples/LR_proximal/script/a9a-data/train/part-'

@@ -243,6 +243,8 @@ private:
       weight_file << elapsed_ms << "\t" << weight_.format(CleanFmt) << endl;
       weight_file.close();
 
+      std::cout << " Iteration " << global_ts_ << std::endl;
+
       pthread_mutex_unlock(&weight_mutex_);
 
       if (global_ts_ == num_iteration_) {
@@ -353,6 +355,8 @@ private:
       weight_file.open (save_filename_, std::ofstream::out | std::ofstream::app);
       weight_file << elapsed_ms << "\t" << weight_.format(CleanFmt) << endl;
       weight_file.close();
+
+      std::cout << " Iteration " << global_ts_ << std::endl;
 
       pthread_mutex_unlock(&weight_mutex_);
 
