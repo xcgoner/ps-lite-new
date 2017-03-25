@@ -520,6 +520,9 @@ private:
                     << std::endl;
           show_test = false;
         }
+        else {
+          std::cout < " Iteration "<< global_ts_ << std::endl;
+        }
 
         // save model
         std::ofstream weight_file;
