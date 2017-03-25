@@ -469,8 +469,9 @@ private:
 
         // synchronization
         // TODO: use the number of workers
+        cout << merged.naggregates << endl;
         if (merged.naggregates == nsamples_) {
-//              std::cout << "apply gradients" << std::endl;
+              cout << "apply gradients" << endl;
           // update the weight
           // gradient descent
           weight_ -= learning_rate_ * merged.vals / merged.naggregates;
