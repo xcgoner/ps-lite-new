@@ -12,6 +12,8 @@
 #include <iomanip>
 #include <unistd.h>
 #include <dirent.h>
+#include <functional>
+#include <algorithm>
 
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wmissing-noreturn"
@@ -1017,11 +1019,10 @@ void RunWorker() {
       }
     }
   }
-  cout << "Worker[" << rank << "]:";
-  for (const auto &file : filelist) {
-    cout << file << ", ";
-  }
-  cout << endl;
+  std::sort(filelist.begin(), filelist.end(), [](const string& a, const string& b) {
+    hash<string> hasher;
+    return hasher(b) < hasher(a);
+  });
   for (int i = 0; i < filelist.size(); i++) {
     if (i % ps::NumWorkers() == ps::MyRank()) {
       filelist_local.push_back(filelist[i]);
