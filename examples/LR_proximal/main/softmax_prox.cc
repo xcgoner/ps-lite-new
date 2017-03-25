@@ -217,29 +217,31 @@ private:
       pull_buf.clear();
 
       // read testing data
-      std::string test_filename = ps::Environment::Get()->find("TEST_FILE");
-      lrprox::data_reader test_dr = lrprox::data_reader(test_filename, ndims_-1);
-      time_t rawtime;
-      time(&rawtime);
-      struct tm* curr_time = localtime(&rawtime);
-      lrprox::SOFTMAX softmax = lrprox::SOFTMAX(ndims_, nclasses_);
-      MatrixXi test_Y_onehot = softmax.onehot_encoder(test_dr.gety());
-      softmax.updateWeight(weight_);
-      double cost = softmax.cost(test_dr.getX(), test_Y_onehot) / test_dr.getX().rows();
-      if (use_proximal_) {
-        if (proximal_op_ == 1) {
-          // l1 proximal
-          cost = cost + prox_opl1.cost(weight_);
+      if (ps::Environment::Get()->find("TEST_FILE") != nullptr) {
+        std::string test_filename = ps::Environment::Get()->find("TEST_FILE");
+        lrprox::data_reader test_dr = lrprox::data_reader(test_filename, ndims_-1);
+        time_t rawtime;
+        time(&rawtime);
+        struct tm* curr_time = localtime(&rawtime);
+        lrprox::SOFTMAX softmax = lrprox::SOFTMAX(ndims_, nclasses_);
+        MatrixXi test_Y_onehot = softmax.onehot_encoder(test_dr.gety());
+        softmax.updateWeight(weight_);
+        double cost = softmax.cost(test_dr.getX(), test_Y_onehot) / test_dr.getX().rows();
+        if (use_proximal_) {
+          if (proximal_op_ == 1) {
+            // l1 proximal
+            cost = cost + prox_opl1.cost(weight_);
+          }
+          else if (proximal_op_ == 2) {
+            // l2 proximal
+            cost = cost + prox_opl2.cost(weight_);
+          }
         }
-        else if (proximal_op_ == 2) {
-          // l2 proximal
-          cost = cost + prox_opl2.cost(weight_);
-        }
+        std::cout << std::setfill ('0') << std::setw(2) << curr_time->tm_hour << ':' << std::setfill ('0') << std::setw(2)
+                  << curr_time->tm_min << ':' << std::setfill ('0') << std::setw(2) << curr_time->tm_sec
+                  << " Iteration "<< global_ts_ << ", cost: " << cost
+                  << std::endl;
       }
-      std::cout << std::setfill ('0') << std::setw(2) << curr_time->tm_hour << ':' << std::setfill ('0') << std::setw(2)
-                << curr_time->tm_min << ':' << std::setfill ('0') << std::setw(2) << curr_time->tm_sec
-                << " Iteration "<< global_ts_ << ", cost: " << cost
-                << std::endl;
 
       // save model
       std::ofstream weight_file;
@@ -329,29 +331,31 @@ private:
       pull_buf.clear();
 
       // read testing data
-      std::string test_filename = ps::Environment::Get()->find("TEST_FILE");
-      lrprox::data_reader test_dr = lrprox::data_reader(test_filename, ndims_-1);
-      time_t rawtime;
-      time(&rawtime);
-      struct tm* curr_time = localtime(&rawtime);
-      lrprox::SOFTMAX softmax = lrprox::SOFTMAX(ndims_, nclasses_);
-      MatrixXi test_Y_onehot = softmax.onehot_encoder(test_dr.gety());
-      softmax.updateWeight(weight_);
-      double cost = softmax.cost(test_dr.getX(), test_Y_onehot) / test_dr.getX().rows();
-      if (use_proximal_) {
-        if (proximal_op_ == 1) {
-          // l1 proximal
-          cost = cost + prox_opl1.cost(weight_);
+      if (ps::Environment::Get()->find("TEST_FILE") != nullptr) {
+        std::string test_filename = ps::Environment::Get()->find("TEST_FILE");
+        lrprox::data_reader test_dr = lrprox::data_reader(test_filename, ndims_-1);
+        time_t rawtime;
+        time(&rawtime);
+        struct tm* curr_time = localtime(&rawtime);
+        lrprox::SOFTMAX softmax = lrprox::SOFTMAX(ndims_, nclasses_);
+        MatrixXi test_Y_onehot = softmax.onehot_encoder(test_dr.gety());
+        softmax.updateWeight(weight_);
+        double cost = softmax.cost(test_dr.getX(), test_Y_onehot) / test_dr.getX().rows();
+        if (use_proximal_) {
+          if (proximal_op_ == 1) {
+            // l1 proximal
+            cost = cost + prox_opl1.cost(weight_);
+          }
+          else if (proximal_op_ == 2) {
+            // l2 proximal
+            cost = cost + prox_opl2.cost(weight_);
+          }
         }
-        else if (proximal_op_ == 2) {
-          // l2 proximal
-          cost = cost + prox_opl2.cost(weight_);
-        }
+        std::cout << std::setfill ('0') << std::setw(2) << curr_time->tm_hour << ':' << std::setfill ('0') << std::setw(2)
+                  << curr_time->tm_min << ':' << std::setfill ('0') << std::setw(2) << curr_time->tm_sec
+                  << " Iteration "<< global_ts_ << ", cost: " << cost
+                  << std::endl;
       }
-      std::cout << std::setfill ('0') << std::setw(2) << curr_time->tm_hour << ':' << std::setfill ('0') << std::setw(2)
-                << curr_time->tm_min << ':' << std::setfill ('0') << std::setw(2) << curr_time->tm_sec
-                << " Iteration "<< global_ts_ << ", cost: " << cost
-                << std::endl;
 
       // save model
       std::ofstream weight_file;
@@ -501,7 +505,7 @@ private:
         server->Response(req_meta);
 
         // read testing data
-        if (show_test) {
+        if (show_test && ps::Environment::Get()->find("TEST_FILE") != nullptr) {
           std::string test_filename = ps::Environment::Get()->find("TEST_FILE");
           lrprox::data_reader test_dr = lrprox::data_reader(test_filename, ndims_-1);
           time_t rawtime;

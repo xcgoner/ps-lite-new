@@ -207,28 +207,30 @@ private:
       pull_buf.clear();
 
       // read testing data
-      std::string test_filename = ps::Environment::Get()->find("TEST_FILE");
-      lrprox::data_reader test_dr = lrprox::data_reader(test_filename, ndims_-1);
-      time_t rawtime;
-      time(&rawtime);
-      struct tm* curr_time = localtime(&rawtime);
-      lrprox::LR lr = lrprox::LR(ndims_);
-      lr.updateWeight(weight_);
-      double cost = lr.cost(test_dr.getX(), test_dr.gety()) / test_dr.getX().rows();
-      if (use_proximal_) {
-        if (proximal_op_ == 1) {
-          // l1 proximal
-          cost = cost + prox_opl1.cost(weight_);
+      if (ps::Environment::Get()->find("TEST_FILE") != nullptr) {
+        std::string test_filename = ps::Environment::Get()->find("TEST_FILE");
+        lrprox::data_reader test_dr = lrprox::data_reader(test_filename, ndims_-1);
+        time_t rawtime;
+        time(&rawtime);
+        struct tm* curr_time = localtime(&rawtime);
+        lrprox::LR lr = lrprox::LR(ndims_);
+        lr.updateWeight(weight_);
+        double cost = lr.cost(test_dr.getX(), test_dr.gety()) / test_dr.getX().rows();
+        if (use_proximal_) {
+          if (proximal_op_ == 1) {
+            // l1 proximal
+            cost = cost + prox_opl1.cost(weight_);
+          }
+          else if (proximal_op_ == 2) {
+            // l2 proximal
+            cost = cost + prox_opl2.cost(weight_);
+          }
         }
-        else if (proximal_op_ == 2) {
-          // l2 proximal
-          cost = cost + prox_opl2.cost(weight_);
-        }
+        std::cout << std::setfill ('0') << std::setw(2) << curr_time->tm_hour << ':' << std::setfill ('0') << std::setw(2)
+                  << curr_time->tm_min << ':' << std::setfill ('0') << std::setw(2) << curr_time->tm_sec
+                  << " Iteration "<< global_ts_ << ", cost: " << cost
+                  << std::endl;
       }
-      std::cout << std::setfill ('0') << std::setw(2) << curr_time->tm_hour << ':' << std::setfill ('0') << std::setw(2)
-                << curr_time->tm_min << ':' << std::setfill ('0') << std::setw(2) << curr_time->tm_sec
-                << " Iteration "<< global_ts_ << ", cost: " << cost
-                << std::endl;
 
       // save model
       std::ofstream weight_file;
@@ -316,28 +318,30 @@ private:
       pull_buf.clear();
 
       // read testing data
-      std::string test_filename = ps::Environment::Get()->find("TEST_FILE");
-      lrprox::data_reader test_dr = lrprox::data_reader(test_filename, ndims_-1);
-      time_t rawtime;
-      time(&rawtime);
-      struct tm* curr_time = localtime(&rawtime);
-      lrprox::LR lr = lrprox::LR(ndims_);
-      lr.updateWeight(weight_);
-      double cost = lr.cost(test_dr.getX(), test_dr.gety()) / test_dr.getX().rows();
-      if (use_proximal_) {
-        if (proximal_op_ == 1) {
-          // l1 proximal
-          cost = cost + prox_opl1.cost(weight_);
+      if (ps::Environment::Get()->find("TEST_FILE") != nullptr) {
+        std::string test_filename = ps::Environment::Get()->find("TEST_FILE");
+        lrprox::data_reader test_dr = lrprox::data_reader(test_filename, ndims_-1);
+        time_t rawtime;
+        time(&rawtime);
+        struct tm* curr_time = localtime(&rawtime);
+        lrprox::LR lr = lrprox::LR(ndims_);
+        lr.updateWeight(weight_);
+        double cost = lr.cost(test_dr.getX(), test_dr.gety()) / test_dr.getX().rows();
+        if (use_proximal_) {
+          if (proximal_op_ == 1) {
+            // l1 proximal
+            cost = cost + prox_opl1.cost(weight_);
+          }
+          else if (proximal_op_ == 2) {
+            // l2 proximal
+            cost = cost + prox_opl2.cost(weight_);
+          }
         }
-        else if (proximal_op_ == 2) {
-          // l2 proximal
-          cost = cost + prox_opl2.cost(weight_);
-        }
+        std::cout << std::setfill ('0') << std::setw(2) << curr_time->tm_hour << ':' << std::setfill ('0') << std::setw(2)
+                  << curr_time->tm_min << ':' << std::setfill ('0') << std::setw(2) << curr_time->tm_sec
+                  << " Iteration "<< global_ts_ << ", cost: " << cost
+                  << std::endl;
       }
-      std::cout << std::setfill ('0') << std::setw(2) << curr_time->tm_hour << ':' << std::setfill ('0') << std::setw(2)
-                << curr_time->tm_min << ':' << std::setfill ('0') << std::setw(2) << curr_time->tm_sec
-                << " Iteration "<< global_ts_ << ", cost: " << cost
-                << std::endl;
 
       // save model
       std::ofstream weight_file;
@@ -491,7 +495,7 @@ private:
         server->Response(req_meta);
 
         // read testing data
-        if (show_test) {
+        if (show_test && ps::Environment::Get()->find("TEST_FILE") != nullptr) {
           std::string test_filename = ps::Environment::Get()->find("TEST_FILE");
           lrprox::data_reader test_dr = lrprox::data_reader(test_filename, ndims_-1);
           time_t rawtime;
@@ -515,16 +519,17 @@ private:
                     << " Iteration "<< global_ts_ << ", cost: " << cost
                     << std::endl;
           show_test = false;
-
-          // save model
-          std::ofstream weight_file;
-          Eigen::IOFormat CleanFmt(Eigen::FullPrecision, 0, ", ", "\t");
-          std::chrono::time_point<std::chrono::system_clock> end_time = std::chrono::system_clock::now();
-          u_int64_t elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(end_time-start_time_).count();
-          weight_file.open (save_filename_, std::ofstream::out | std::ofstream::app);
-          weight_file << elapsed_ms << "\t" << weight_.format(CleanFmt) << endl;
-          weight_file.close();
         }
+
+        // save model
+        std::ofstream weight_file;
+        Eigen::IOFormat CleanFmt(Eigen::FullPrecision, 0, ", ", "\t");
+        std::chrono::time_point<std::chrono::system_clock> end_time = std::chrono::system_clock::now();
+        u_int64_t elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(end_time-start_time_).count();
+        weight_file.open (save_filename_, std::ofstream::out | std::ofstream::app);
+        weight_file << elapsed_ms << "\t" << weight_.format(CleanFmt) << endl;
+        weight_file.close();
+
       } else { // pull
         CHECK(weight_initialized_);
 
