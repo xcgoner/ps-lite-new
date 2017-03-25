@@ -1024,6 +1024,7 @@ void RunWorker() {
     }
   }
   lrprox::data_reader dr = lrprox::data_reader(filelist_local, nfeatures);
+  cout << "Worker[" << rank << "]:" << "Local data size:" << dr.getX().rows() << endl;
 
   int ts1 = 0, ts2 = 0;
 
