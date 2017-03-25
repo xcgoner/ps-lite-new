@@ -521,7 +521,7 @@ private:
           show_test = false;
         }
         else {
-          std::cout << " Iteration " << global_ts_ << std::endl;
+//          std::cout << " Iteration " << global_ts_ << std::endl;
         }
 
         // save model
@@ -1019,6 +1019,7 @@ void RunWorker() {
   for (int i = 0; i < filelist.size(); i++) {
     if (i % ps::NumWorkers() == ps::MyRank()) {
       filelist_local.push_back(filelist[i]);
+      cout << filelist[i] << endl;
     }
   }
   lrprox::data_reader dr = lrprox::data_reader(filelist_local, nfeatures);

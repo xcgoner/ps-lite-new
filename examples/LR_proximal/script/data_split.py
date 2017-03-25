@@ -2,7 +2,7 @@ import os
 import random
 import math
 
-data_dir = './a9a-data'
+data_dir = './'
 train_file = 'a9a'
 num_part = 16
 
@@ -15,7 +15,7 @@ def get_data(filename, is_shuffle=True):
         random.shuffle(samples)
     return samples
 
-train_dir = os.path.join(data_dir, 'train')
+train_dir = os.path.join(data_dir, 'a9a_data')
 
 if not os.path.isdir(train_dir):
     os.mkdir(train_dir)
