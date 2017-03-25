@@ -471,7 +471,7 @@ private:
 
         // synchronization
         // TODO: use the number of workers
-        cout << merged.naggregates << endl;
+//        cout << merged.naggregates << endl;
         if (merged.naggregates == nsamples_) {
 //              cout << "apply gradients" << endl;
           // update the weight
