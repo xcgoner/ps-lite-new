@@ -1017,10 +1017,11 @@ void RunWorker() {
       }
     }
   }
+  cout << "Worker[" << rank << "]: nworkers" << ps::NumWorkers() << endl;
   for (int i = 0; i < filelist.size(); i++) {
     if (i % ps::NumWorkers() == ps::MyRank()) {
       filelist_local.push_back(filelist[i]);
-      cout << filelist[i] << endl;
+      cout << "Worker[" << rank << "]:" << filelist[i] << endl;
     }
   }
   lrprox::data_reader dr = lrprox::data_reader(filelist_local, nfeatures);
