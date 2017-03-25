@@ -129,8 +129,6 @@ def mpi_submit(nworker, nserver, pass_envs):
 
 tracker.config_logger(args)
 
-print(args.host_ip)
-
 tracker.submit(args.nworker, args.server_nodes, fun_submit = mpi_submit,
                hostIP=args.host_ip,
                pscmd=(' '.join(args.command) + ' ' + ' '.join(unknown)))
