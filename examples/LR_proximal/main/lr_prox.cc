@@ -58,7 +58,9 @@ public:
     if (ps::Environment::Get()->find("SYNC_MODE") != nullptr) {
       sync_mode_ = util::ToInt(ps::Environment::Get()->find("SYNC_MODE"));
       if (sync_mode_ == 2 || sync_mode_ == 3) {
-        tau_ = util::ToInt(ps::Environment::Get()->find("TAU"));
+        int msec = util::ToInt(ps::Environment::Get()->find("TAU"));
+        tau_ = msec / 1000;
+        ntau_ = ((__syscall_slong_t)(msec - tau_*1000)) * 1000000;
       }
     }
     else {
@@ -148,7 +150,6 @@ private:
   // timer
   static void *SyncTimer(void *ptr) {
     // only for DGD-NOVR
-    struct timespec time_to_wait = {0, tau_};
 
     while (true) {
       pthread_mutex_lock(&timer_mutex_);
@@ -156,6 +157,11 @@ private:
         pthread_cond_wait(&timer_cond_, &timer_mutex_);
       }
       else {
+        // absolute time!
+        struct timespec time_to_wait;
+        timespec_get(&time_to_wait, TIME_UTC);
+        time_to_wait.tv_sec += tau_;
+        time_to_wait.tv_nsec += ntau_;
         pthread_cond_timedwait(&timer_cond_, &timer_mutex_, &time_to_wait);
       }
       pthread_mutex_unlock(&timer_mutex_);
@@ -258,7 +264,6 @@ private:
 
   static void *SyncTimerUpdate(void *ptr) {
     // only for DGD-VR
-    struct timespec time_to_wait = {0, tau_};
 
     while (true) {
       pthread_mutex_lock(&timer_mutex_);
@@ -266,6 +271,11 @@ private:
         pthread_cond_wait(&timer_cond_, &timer_mutex_);
       }
       else {
+        // absolute time!
+        struct timespec time_to_wait;
+        timespec_get(&time_to_wait, TIME_UTC);
+        time_to_wait.tv_sec += tau_;
+        time_to_wait.tv_nsec += ntau_;
         pthread_cond_timedwait(&timer_cond_, &timer_mutex_, &time_to_wait);
       }
       pthread_mutex_unlock(&timer_mutex_);
@@ -780,7 +790,8 @@ private:
 
   // for semi-sync mode
   static std::vector<PullBuf<Val>> pull_buf;
-  static int tau_;
+  static __time_t tau_;
+  static __syscall_slong_t ntau_;
   static std::map<int, int> pull_tracker;
   static VectorXd update_;
   static std::map<int, int> update_tracker;
@@ -836,7 +847,9 @@ ps::KVServer<double>* KVStoreDistServer<Val>::ps_server_;
 template <typename Val>
 std::vector<PullBuf<Val>> KVStoreDistServer<Val>::pull_buf;
 template <typename Val>
-int KVStoreDistServer<Val>::tau_;
+__time_t KVStoreDistServer<Val>::tau_;
+template <typename Val>
+__syscall_slong_t KVStoreDistServer<Val>::ntau_;
 template <typename Val>
 std::map<int, int> KVStoreDistServer<Val>::pull_tracker;
 template <typename Val>
