@@ -1110,7 +1110,6 @@ void RunWorker() {
       if (((double) rand() / (RAND_MAX)) < delay_prob) {
         usleep(delay_usec);
       }
-      ps::Postoffice::Get()->Barrier(ps::kWorkerGroup);
       // termination
       if (ts1 == -1) {
         break;
