@@ -3,8 +3,8 @@ import random
 import math
 
 data_dir = './'
-train_file = 'a9a'
-num_part = 16
+train_file = 'mnist8m.scale'
+num_part = 3360
 
 def get_data(filename, is_shuffle=True):
     samples = []
@@ -15,7 +15,7 @@ def get_data(filename, is_shuffle=True):
         random.shuffle(samples)
     return samples
 
-train_dir = os.path.join(data_dir, 'a9a_data')
+train_dir = os.path.join(data_dir, 'mnist')
 
 if not os.path.isdir(train_dir):
     os.mkdir(train_dir)
