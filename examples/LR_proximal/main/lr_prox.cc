@@ -521,7 +521,7 @@ private:
           show_test = false;
         }
         else {
-          std::cout < " Iteration "<< global_ts_ << std::endl;
+          std::cout << " Iteration " << global_ts_ << std::endl;
         }
 
         // save model
