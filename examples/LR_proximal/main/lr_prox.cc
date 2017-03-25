@@ -113,14 +113,16 @@ public:
     accumulated_grad_.initialized = false;
 
     // save model
-    time_t rawtime;
-    struct tm *timeinfo;
-    char buffer[80];
-    time(&rawtime);
-    timeinfo = localtime(&rawtime);
-    strftime (buffer, 80, "%Y%m%d%H%M%S", timeinfo);
-    save_filename_ = ps::Environment::Get()->find("SAVE_PREFIX") + string("sync") + to_string(sync_mode_) + string("_") + string(buffer);
-    cout << save_filename_ << endl;
+    if (!eval_) {
+      time_t rawtime;
+      struct tm *timeinfo;
+      char buffer[80];
+      time(&rawtime);
+      timeinfo = localtime(&rawtime);
+      strftime (buffer, 80, "%Y%m%d%H%M%S", timeinfo);
+      save_filename_ = ps::Environment::Get()->find("SAVE_PREFIX") + string("sync") + to_string(sync_mode_) + string("_") + string(buffer);
+      cout << save_filename_ << endl;
+    }
 
     start_time_ = std::chrono::system_clock::now();
 
@@ -133,6 +135,7 @@ public:
         eval_file_ >> weight_(i);
       }
       eval_file_output_.open(ps::Environment::Get()->find("EVAL_FILE") + string("_eval"), std::ofstream::out);
+      cout << ps::Environment::Get()->find("EVAL_FILE") << endl;
     }
     accumulated_eval_.eval = 0;
     accumulated_eval_.naggregates = 0;
