@@ -1043,6 +1043,7 @@ void RunWorker() {
 
       // pull
       kv->Wait(kv->Pull(keys_pull, &vec_weight_pull, nullptr, 0, nullptr, &ts1, &ts2));
+      ps::Postoffice::Get()->Barrier(ps::kWorkerGroup);
       // termination
       if (ts1 == -1) {
         break;
@@ -1069,6 +1070,7 @@ void RunWorker() {
       if (((double) rand() / (RAND_MAX)) < delay_prob) {
         usleep(delay_usec);
       }
+      ps::Postoffice::Get()->Barrier(ps::kWorkerGroup);
       // termination
       if (ts1 == -1) {
         break;
