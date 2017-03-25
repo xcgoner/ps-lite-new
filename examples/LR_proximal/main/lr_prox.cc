@@ -1017,7 +1017,11 @@ void RunWorker() {
       }
     }
   }
-  cout << "Worker[" << rank << "]: nworkers" << ps::NumWorkers() << endl;
+  cout << "Worker[" << rank << "]:";
+  for (const auto &file : filelist) {
+    cout << file << ", ";
+  }
+  cout << endl;
   for (int i = 0; i < filelist.size(); i++) {
     if (i % ps::NumWorkers() == ps::MyRank()) {
       filelist_local.push_back(filelist[i]);
