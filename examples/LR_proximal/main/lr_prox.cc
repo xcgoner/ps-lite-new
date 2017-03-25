@@ -895,6 +895,9 @@ struct PushPackage {
 void *ComputePushGrad(void *ptr) {
   // only for DGD-NOVR
   PushPackage *push_package = (PushPackage*)ptr;
+  if (((double) rand() / (RAND_MAX)) < push_package->delay_prob) {
+    usleep(push_package->delay_usec);
+  }
   // gradient
   VectorXd::Map(&(push_package->vec_weight_push->at(0)), push_package->ndims) = push_package->lr->grad(push_package->dr->getX(), push_package->dr->gety());
   // timestamps
@@ -927,6 +930,9 @@ struct UpdatePackage {
 void *ComputePushUpdate(void *ptr) {
   // only for DGD-VR
   UpdatePackage *update_package = (UpdatePackage*)ptr;
+  if (((double) rand() / (RAND_MAX)) < update_package->delay_prob) {
+    usleep(update_package->delay_usec);
+  }
   // compute gradient and storage
 //  (*(update_package->grad_tracker))[update_package->ts2] = update_package->lr->grad(update_package->dr->getX(), update_package->dr->gety());
   update_package->grad_tracker->insert(std::pair<int, VectorXd>(update_package->ts2, update_package->lr->grad(update_package->dr->getX(), update_package->dr->gety())));
@@ -1143,9 +1149,6 @@ void RunWorker() {
 
       // pull
       kv->Wait(kv->Pull(keys_pull, &vec_weight_pull, nullptr, 0, nullptr, &ts1, &ts2));
-      if (((double) rand() / (RAND_MAX)) < delay_prob) {
-        usleep(delay_usec);
-      }
       // termination
       if (ts1 == -1) {
         pthread_cancel(grad_thread);
@@ -1194,9 +1197,6 @@ void RunWorker() {
 
       // pull
       kv->Wait(kv->Pull(keys_pull, &vec_weight_pull, nullptr, 0, nullptr, &ts1, &ts2));
-      if (((double) rand() / (RAND_MAX)) < delay_prob) {
-        usleep(delay_usec);
-      }
       // termination
       if (ts1 == -1) {
         pthread_cancel(update_thread);
