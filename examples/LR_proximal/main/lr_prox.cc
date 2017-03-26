@@ -1092,7 +1092,6 @@ void RunWorker() {
     std::vector<ps::Key> keys_eval(2);
     for (size_t i = 0; i < keys_eval.size(); ++i) {
       keys_eval[i] = i;
-      keys_eval[i] = i;
     }
     vector<double> vec_eval_push(keys_eval.size());
 

@@ -173,6 +173,10 @@ private:
         timespec_get(&time_to_wait, TIME_UTC);
         time_to_wait.tv_sec += tau_;
         time_to_wait.tv_nsec += ntau_;
+        if (time_to_wait.tv_nsec >= 1e9) {
+          time_to_wait.tv_sec += 1;
+          time_to_wait.tv_nsec -= 1e9;
+        }
         pthread_cond_timedwait(&timer_cond_, &timer_mutex_, &time_to_wait);
       }
       pthread_mutex_unlock(&timer_mutex_);
@@ -184,7 +188,9 @@ private:
       // gradient descent
       auto &merged = accumulated_grad_;
 //      cout << " Iteration "<< global_ts_ << ", received: " << merged.naggregates << endl;
-      weight_ -= learning_rate_ * merged.vals / merged.naggregates;
+      if (merged.naggregates > 0) {
+        weight_ -= learning_rate_ * merged.vals / merged.naggregates;
+      }
       if (use_proximal_) {
         if (proximal_op_ == 1) {
           // l1 proximal
@@ -197,6 +203,10 @@ private:
       }
       // timestamp
       global_ts_++;
+
+      std::cout << " Iteration " << global_ts_ << ", received: " << merged.naggregates << std::endl;
+
+      // reset
       merged.vals.setZero(ndims_, nclasses_);
       merged.naggregates = 0;
       // TODO: pull buffer
@@ -261,8 +271,6 @@ private:
       weight_file << elapsed_ms << "\t" << weight_.format(CleanFmt) << endl;
       weight_file.close();
 
-      std::cout << " Iteration " << global_ts_ << std::endl;
-
       pthread_mutex_unlock(&weight_mutex_);
 
       if (global_ts_ == num_iteration_) {
@@ -290,6 +298,10 @@ private:
         timespec_get(&time_to_wait, TIME_UTC);
         time_to_wait.tv_sec += tau_;
         time_to_wait.tv_nsec += ntau_;
+        if (time_to_wait.tv_nsec >= 1e9) {
+          time_to_wait.tv_sec += 1;
+          time_to_wait.tv_nsec -= 1e9;
+        }
         pthread_cond_timedwait(&timer_cond_, &timer_mutex_, &time_to_wait);
       }
       pthread_mutex_unlock(&timer_mutex_);
@@ -301,7 +313,9 @@ private:
       // gradient descent
       auto &merged = accumulated_grad_;
 //      cout << " Iteration "<< global_ts_ << ", received: " << merged.naggregates << endl;
-      weight_ -= learning_rate_ * (merged.vals / merged.naggregates + update_ / nsamples_);
+      if (merged.naggregates > 0) {
+        weight_ -= learning_rate_ * (merged.vals / merged.naggregates + update_ / nsamples_);
+      }
       if (use_proximal_) {
         if (proximal_op_ == 1) {
           // l1 proximal
@@ -316,6 +330,9 @@ private:
       update_ = update_.eval() + merged.vals;
       // timestamp
       global_ts_++;
+
+      std::cout << " Iteration " << global_ts_ << ", received: " << merged.naggregates << std::endl;
+
       // clear
       merged.vals.setZero(ndims_, nclasses_);
       merged.naggregates = 0;
@@ -381,7 +398,7 @@ private:
       weight_file << elapsed_ms << "\t" << weight_.format(CleanFmt) << endl;
       weight_file.close();
 
-      std::cout << " Iteration " << global_ts_ << std::endl;
+//      std::cout << " Iteration " << global_ts_ << std::endl;
 
       pthread_mutex_unlock(&weight_mutex_);
 
@@ -904,6 +921,9 @@ struct PushPackage {
 void *ComputePushGrad(void *ptr) {
   // only for DGD-NOVR
   PushPackage *push_package = (PushPackage*)ptr;
+  if (((double) rand() / (RAND_MAX)) < push_package->delay_prob) {
+    usleep(push_package->delay_usec);
+  }
   // gradient
   copyMatrix(push_package->softmax->grad(*(push_package->X), *(push_package->Y_onehot)), *(push_package->vec_weight_push));
   // timestamps
@@ -938,6 +958,9 @@ struct UpdatePackage {
 void *ComputePushUpdate(void *ptr) {
   // only for DGD-VR
   UpdatePackage *update_package = (UpdatePackage*)ptr;
+  if (((double) rand() / (RAND_MAX)) < update_package->delay_prob) {
+    usleep(update_package->delay_usec);
+  }
   // compute gradient and storage
 //  (*(update_package->grad_tracker))[update_package->ts2] = update_package->lr->grad(update_package->dr->getX(), update_package->dr->gety());
   update_package->grad_tracker->insert(std::pair<int, MatrixXd>(update_package->ts2, update_package->softmax->grad(*(update_package->X), *(update_package->Y_onehot))));
@@ -1063,7 +1086,7 @@ void RunWorker() {
     }
   }
   lrprox::data_reader dr = lrprox::data_reader(filelist_local, nfeatures);
-  cout << "Worker[" << rank << "]:" << "Local data size:" << dr.getX().rows() << endl;
+//  cout << "Worker[" << rank << "]:" << "Local data size:" << dr.getX().rows() << endl;
   MatrixXi Y_onehot = softmax.onehot_encoder(dr.gety());
 
   int ts1 = 0, ts2 = 0;
@@ -1083,7 +1106,6 @@ void RunWorker() {
 
       // pull
       kv->Wait(kv->Pull(keys_pull, &vec_weight_pull, nullptr, 0, nullptr, &ts1, &ts2));
-      ps::Postoffice::Get()->Barrier(ps::kWorkerGroup);
       // termination
       if (ts1 == -1) {
         break;
@@ -1157,9 +1179,6 @@ void RunWorker() {
 
       // pull
       kv->Wait(kv->Pull(keys_pull, &vec_weight_pull, nullptr, 0, nullptr, &ts1, &ts2));
-      if (((double) rand() / (RAND_MAX)) < delay_prob) {
-        usleep(delay_usec);
-      }
       // termination
       if (ts1 == -1) {
         pthread_cancel(grad_thread);
@@ -1210,9 +1229,6 @@ void RunWorker() {
 
       // pull
       kv->Wait(kv->Pull(keys_pull, &vec_weight_pull, nullptr, 0, nullptr, &ts1, &ts2));
-      if (((double) rand() / (RAND_MAX)) < delay_prob) {
-        usleep(delay_usec);
-      }
       // termination
       if (ts1 == -1) {
         pthread_cancel(update_thread);
