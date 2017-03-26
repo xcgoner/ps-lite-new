@@ -195,6 +195,10 @@ private:
       }
       // timestamp
       global_ts_++;
+
+      std::cout << " Iteration " << global_ts_ << ", received: " << merged.naggregates << std::endl;
+
+      // reset
       merged.vals.setZero(ndims_);
       merged.naggregates = 0;
       // TODO: pull buffer
@@ -258,8 +262,6 @@ private:
       weight_file << elapsed_ms << "\t" << weight_.format(CleanFmt) << endl;
       weight_file.close();
 
-      std::cout << " Iteration " << global_ts_ << std::endl;
-
       pthread_mutex_unlock(&weight_mutex_);
 
       if (global_ts_ == num_iteration_) {
@@ -315,6 +317,9 @@ private:
       update_ = update_.eval() + merged.vals;
       // timestamp
       global_ts_++;
+
+      std::cout << " Iteration " << global_ts_ << ", received: " << merged.naggregates << std::endl;
+
       // clear
       merged.vals.setZero(ndims_);
       merged.naggregates = 0;
@@ -379,7 +384,7 @@ private:
       weight_file << elapsed_ms << "\t" << weight_.format(CleanFmt) << endl;
       weight_file.close();
 
-      std::cout << " Iteration " << global_ts_ << std::endl;
+//      std::cout << " Iteration " << global_ts_ << std::endl;
 
       pthread_mutex_unlock(&weight_mutex_);
 
