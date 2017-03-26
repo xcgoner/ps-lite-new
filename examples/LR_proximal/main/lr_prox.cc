@@ -107,7 +107,8 @@ public:
 
 
     // TODO: initialize weights
-    weight_ = VectorXd::Ones(ndims_);
+//    weight_ = VectorXd::Ones(ndims_);
+    weight_ = VectorXd::Zero(ndims_);
     weight_initialized_ = true;
     // initialize update
     update_ = VectorXd::Zero(ndims_);

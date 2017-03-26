@@ -112,7 +112,8 @@ public:
 
 
     // TODO: initialize weights
-    weight_ = MatrixXd::Ones(ndims_, nclasses_);
+//    weight_ = MatrixXd::Ones(ndims_, nclasses_);
+    weight_ = MatrixXd::Zero(ndims_, nclasses_);
     weight_initialized_ = true;
     // initialize update
     update_ = MatrixXd::Zero(ndims_, nclasses_);
