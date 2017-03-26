@@ -182,7 +182,9 @@ private:
       // gradient descent
       auto &merged = accumulated_grad_;
 //      cout << " Iteration "<< global_ts_ << ", received: " << merged.naggregates << endl;
-      weight_ -= learning_rate_ * merged.vals / merged.naggregates;
+      if (merged.naggregates > 0) {
+        weight_ -= learning_rate_ * merged.vals / merged.naggregates;
+      }
       if (use_proximal_) {
         if (proximal_op_ == 1) {
           // l1 proximal
@@ -302,7 +304,9 @@ private:
       // gradient descent
       auto &merged = accumulated_grad_;
 //      cout << " Iteration "<< global_ts_ << ", received: " << merged.naggregates << endl;
-      weight_ -= learning_rate_ * (merged.vals / merged.naggregates + update_ / nsamples_);
+      if (merged.naggregates > 0) {
+        weight_ -= learning_rate_ * (merged.vals / merged.naggregates + update_ / nsamples_);
+      }
       if (use_proximal_) {
         if (proximal_op_ == 1) {
           // l1 proximal
