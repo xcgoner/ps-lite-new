@@ -61,6 +61,7 @@ public:
         int msec = util::ToInt(ps::Environment::Get()->find("TAU"));
         tau_ = msec / 1000;
         ntau_ = ((__syscall_slong_t)(msec - tau_*1000)) * 1000000;
+//        cout << tau_ << ", " << ntau_ << endl;
       }
     }
     else {
@@ -102,7 +103,7 @@ public:
     pthread_mutex_init(&timer_mutex_, NULL);
     pthread_mutex_init(&weight_mutex_, NULL);
     pthread_cond_init(&timer_cond_, NULL);
-    pthread_cond_init(&first_cond_, NULL);
+//    pthread_cond_init(&first_cond_, NULL);
 
 
     // TODO: initialize weights
@@ -158,7 +159,7 @@ private:
     while (true) {
       pthread_mutex_lock(&timer_mutex_);
       if (global_ts_ == 0) {
-        pthread_cond_wait(&first_cond_, &timer_mutex_);
+        pthread_cond_wait(&timer_cond_, &timer_mutex_);
       }
       else {
         // absolute time!
@@ -166,6 +167,10 @@ private:
         timespec_get(&time_to_wait, TIME_UTC);
         time_to_wait.tv_sec += tau_;
         time_to_wait.tv_nsec += ntau_;
+        if (time_to_wait.tv_nsec >= 1e9) {
+          time_to_wait.tv_sec += 1;
+          time_to_wait.tv_nsec -= 1e9;
+        }
         pthread_cond_timedwait(&timer_cond_, &timer_mutex_, &time_to_wait);
       }
       pthread_mutex_unlock(&timer_mutex_);
@@ -272,7 +277,7 @@ private:
     while (true) {
       pthread_mutex_lock(&timer_mutex_);
       if (global_ts_ == 0) {
-        pthread_cond_wait(&first_cond_, &timer_mutex_);
+        pthread_cond_wait(&timer_cond_, &timer_mutex_);
       }
       else {
         // absolute time!
@@ -280,6 +285,10 @@ private:
         timespec_get(&time_to_wait, TIME_UTC);
         time_to_wait.tv_sec += tau_;
         time_to_wait.tv_nsec += ntau_;
+        if (time_to_wait.tv_nsec >= 1e9) {
+          time_to_wait.tv_sec += 1;
+          time_to_wait.tv_nsec -= 1e9;
+        }
         pthread_cond_timedwait(&timer_cond_, &timer_mutex_, &time_to_wait);
       }
       pthread_mutex_unlock(&timer_mutex_);
@@ -613,7 +622,7 @@ private:
           // synchronization
           if (merged.naggregates == nsamples_) {
             // trigger
-            pthread_cond_broadcast(&first_cond_);
+            pthread_cond_broadcast(&timer_cond_);
           }
         }
 
@@ -709,7 +718,7 @@ private:
           // synchronization
           if (merged.naggregates == nsamples_) {
             // trigger
-            pthread_cond_broadcast(&first_cond_);
+            pthread_cond_broadcast(&timer_cond_);
           }
         }
 
@@ -802,7 +811,7 @@ private:
   static pthread_mutex_t timer_mutex_;
   static pthread_mutex_t weight_mutex_;
   static pthread_cond_t timer_cond_;
-  static pthread_cond_t first_cond_;
+//  static pthread_cond_t first_cond_;
 
   static string save_filename_;
 
@@ -867,8 +876,8 @@ template <typename Val>
 pthread_mutex_t KVStoreDistServer<Val>::weight_mutex_;
 template <typename Val>
 pthread_cond_t KVStoreDistServer<Val>::timer_cond_;
-template <typename Val>
-pthread_cond_t KVStoreDistServer<Val>::first_cond_;
+//template <typename Val>
+//pthread_cond_t KVStoreDistServer<Val>::first_cond_;
 
 template <typename Val>
 string KVStoreDistServer<Val>::save_filename_;
