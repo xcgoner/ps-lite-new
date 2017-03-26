@@ -184,16 +184,16 @@ private:
       auto &merged = accumulated_grad_;
 //      cout << " Iteration "<< global_ts_ << ", received: " << merged.naggregates << endl;
       if (merged.naggregates > 0) {
-        weight_ -= learning_rate_ * merged.vals / merged.naggregates;
+        weight_ -= merged.vals * learning_rate_ / merged.naggregates;
       }
       if (use_proximal_) {
         if (proximal_op_ == 1) {
           // l1 proximal
-          weight_ = prox_opl1.proximal(weight_, learning_rate_);
+          weight_ = prox_opl1.proximal(weight_.eval(), learning_rate_);
         }
         else if (proximal_op_ == 2) {
           // l2 proximal
-          weight_ = prox_opl2.proximal(weight_, learning_rate_);
+          weight_ = prox_opl2.proximal(weight_.eval(), learning_rate_);
         }
       }
       // timestamp
@@ -311,11 +311,11 @@ private:
       if (use_proximal_) {
         if (proximal_op_ == 1) {
           // l1 proximal
-          weight_ = prox_opl1.proximal(weight_, learning_rate_);
+          weight_ = prox_opl1.proximal(weight_.eval(), learning_rate_);
         }
         else if (proximal_op_ == 2) {
           // l2 proximal
-          weight_ = prox_opl2.proximal(weight_, learning_rate_);
+          weight_ = prox_opl2.proximal(weight_.eval(), learning_rate_);
         }
       }
       // renew update
@@ -513,16 +513,16 @@ private:
 //              cout << "apply gradients" << endl;
           // update the weight
           // gradient descent
-          weight_ -= learning_rate_ * merged.vals / merged.naggregates;
+          weight_ -=  merged.vals * learning_rate_ / merged.naggregates;
           // TODO: proximal step
           if (use_proximal_) {
             if (proximal_op_ == 1) {
               // l1 proximal
-              weight_ = prox_opl1.proximal(weight_, learning_rate_);
+              weight_ = prox_opl1.proximal(weight_.eval(), learning_rate_);
             }
             else if (proximal_op_ == 2) {
               // l2 proximal
-              weight_ = prox_opl2.proximal(weight_, learning_rate_);
+              weight_ = prox_opl2.proximal(weight_.eval(), learning_rate_);
             }
           }
           // timestamp
