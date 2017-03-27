@@ -448,8 +448,9 @@ private:
               merged.eval += prox_opl2.cost(weight_);
             }
           }
-          std::cout << " Iteration "<< global_ts_ << ", time: " << std::setw(8) << eval_usec_ << ", cost: " << std::setw(16) << merged.eval << std::endl;
-          eval_file_output_ << " Iteration "<< global_ts_ << ", time: " << std::setw(8) << eval_usec_ << ", cost: " << std::setw(16) << merged.eval << std::endl;
+          cout.precision(17);
+          std::cout << " Iteration "<< global_ts_ << ", time: " << std::setw(8) << eval_usec_ << ", cost: " << std::fixed << merged.eval << std::endl;
+          eval_file_output_ << " Iteration "<< global_ts_ << ", time: " << std::setw(8) << eval_usec_ << ", cost: " << std::fixed << merged.eval << std::endl;
           merged.eval = 0;
           merged.naggregates = 0;
           if (global_ts_ == num_iteration_) {
