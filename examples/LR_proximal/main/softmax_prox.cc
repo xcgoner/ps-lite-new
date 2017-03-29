@@ -216,6 +216,8 @@ private:
       for (size_t i = 0; i < n; ++i) {
         response.vals[i] = weight_.data()[i];
       }
+
+      random_shuffle(pull_buf.begin(), pull_buf.end());
       for (auto const &pull_req : pull_buf) {
         // TODO: for one single server, the keys are not necessary for pull
         response.keys = pull_req.response.keys;
@@ -343,6 +345,8 @@ private:
       for (size_t i = 0; i < n; ++i) {
         response.vals[i] = weight_.data()[i];
       }
+
+      random_shuffle(pull_buf.begin(), pull_buf.end());
       for (auto const &pull_req : pull_buf) {
         // TODO: for one single server, the keys are not necessary for pull
         response.keys = pull_req.response.keys;
@@ -995,6 +999,8 @@ void *ComputePushUpdate(void *ptr) {
     usleep(update_package->delay_usec);
   }
   update_package->kv->Push(*(update_package->keys_push), *(update_package->vec_weight_push));
+  // report memory usage:
+  cout << "Memory: " << update_package->grad_tracker->size() << endl;
   return NULL;
 }
 
