@@ -927,7 +927,7 @@ struct PushPackage {
 void *ComputePushGrad(void *ptr) {
   // only for DGD-NOVR
   PushPackage *push_package = (PushPackage*)ptr;
-  if (((double) rand() / (RAND_MAX)) < push_package->delay_prob) {
+  if (((double) rand() / (RAND_MAX)) < push_package->delay_prob && push_package->ts1 != 0) {
 //    usleep(push_package->delay_usec);
     return NULL;
   }
@@ -965,7 +965,7 @@ struct UpdatePackage {
 void *ComputePushUpdate(void *ptr) {
   // only for DGD-VR
   UpdatePackage *update_package = (UpdatePackage*)ptr;
-  if (((double) rand() / (RAND_MAX)) < update_package->delay_prob) {
+  if (((double) rand() / (RAND_MAX)) < update_package->delay_prob && update_package->ts1 != 0) {
 //    usleep(update_package->delay_usec);
     return NULL;
   }
