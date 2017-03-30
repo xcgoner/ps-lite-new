@@ -1031,7 +1031,8 @@ void RunWorker() {
   double delay_prob = util::ToDouble(ps::Environment::Get()->find("GD_DELAY_MSG")) / 100;
   // millisecond to microsecond
   int delay_usec = util::ToInt(ps::Environment::Get()->find("GD_RESEND_DELAY")) * 1000;
-  srand (time(NULL) + ps::MyRank());
+//  srand (time(NULL) + ps::MyRank());
+  srand (ps::MyRank());
 
   int rank = ps::MyRank();
   // kv store
