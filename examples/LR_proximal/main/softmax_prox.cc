@@ -928,7 +928,8 @@ void *ComputePushGrad(void *ptr) {
   // only for DGD-NOVR
   PushPackage *push_package = (PushPackage*)ptr;
   if (((double) rand() / (RAND_MAX)) < push_package->delay_prob) {
-    usleep(push_package->delay_usec);
+//    usleep(push_package->delay_usec);
+    return NULL;
   }
   // gradient
   copyMatrix(push_package->softmax->grad(*(push_package->X), *(push_package->Y_onehot)), *(push_package->vec_weight_push));
@@ -937,9 +938,9 @@ void *ComputePushGrad(void *ptr) {
   push_package->vec_weight_push->at(push_package->ndims*push_package->nclasses+2) = push_package->ts2;
   // push, no wait
   // TODO: simulate the delay
-  if (((double) rand() / (RAND_MAX)) < push_package->delay_prob) {
-    usleep(push_package->delay_usec);
-  }
+//  if (((double) rand() / (RAND_MAX)) < push_package->delay_prob) {
+//    usleep(push_package->delay_usec);
+//  }
   push_package->kv->Push(*(push_package->keys_push), *(push_package->vec_weight_push));
   return NULL;
 }
@@ -965,7 +966,8 @@ void *ComputePushUpdate(void *ptr) {
   // only for DGD-VR
   UpdatePackage *update_package = (UpdatePackage*)ptr;
   if (((double) rand() / (RAND_MAX)) < update_package->delay_prob) {
-    usleep(update_package->delay_usec);
+//    usleep(update_package->delay_usec);
+    return NULL;
   }
   // compute gradient and storage
 //  (*(update_package->grad_tracker))[update_package->ts2] = update_package->lr->grad(update_package->dr->getX(), update_package->dr->gety());
@@ -995,9 +997,9 @@ void *ComputePushUpdate(void *ptr) {
   update_package->vec_weight_push->at(update_package->ndims*update_package->nclasses+2) = update_package->ts2;
   // push, no wait
   // TODO: simulate the delay
-  if (((double) rand() / (RAND_MAX)) < update_package->delay_prob) {
-    usleep(update_package->delay_usec);
-  }
+//  if (((double) rand() / (RAND_MAX)) < update_package->delay_prob) {
+//    usleep(update_package->delay_usec);
+//  }
   update_package->kv->Push(*(update_package->keys_push), *(update_package->vec_weight_push));
   // report memory usage:
 //  cout << "Memory: " << update_package->grad_tracker->size() << endl;
