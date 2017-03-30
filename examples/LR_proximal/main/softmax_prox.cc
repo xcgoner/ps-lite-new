@@ -1000,7 +1000,7 @@ void *ComputePushUpdate(void *ptr) {
   }
   update_package->kv->Push(*(update_package->keys_push), *(update_package->vec_weight_push));
   // report memory usage:
-  cout << "Memory: " << update_package->grad_tracker->size() << endl;
+//  cout << "Memory: " << update_package->grad_tracker->size() << endl;
   return NULL;
 }
 
