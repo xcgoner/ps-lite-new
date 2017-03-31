@@ -362,6 +362,7 @@ private:
         }
         response.ts2 = global_ts_;
 
+        // TODO: use server to control the active dropping
         ps_server_->Response(pull_req.req_meta, response);
       }
       // erase
